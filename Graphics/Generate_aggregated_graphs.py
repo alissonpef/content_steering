@@ -7,6 +7,7 @@ import re
 import json
 import logging
 import numpy as np
+import math
 
 logger = logging.getLogger("plot_aggregated_logs")
 
@@ -63,6 +64,17 @@ def format_plot_aggregated(ax, title, xlabel, ylabel, legend_loc='best',
     ax.set_title(title, fontsize=14)
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel(ylabel, fontsize=12)
+
+    if xlim_max is not None and ax.has_data():
+        ax.set_xticks(np.arange(0, xlim_max + 1, 15))
+        ax.set_xlim(left=0, right=xlim_max)
+    elif ax.has_data():
+        current_xlim_left, current_xlim_right = ax.get_xlim()
+        start_tick = 0
+        if current_xlim_left > 7.5 :
+             start_tick = math.floor(current_xlim_left / 15) * 15
+        ax.set_xticks(np.arange(start_tick, current_xlim_right + 1, 15))
+
     if y_log_scale:
         ax.set_yscale('log')
         if ax.has_data(): ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
@@ -78,10 +90,6 @@ def format_plot_aggregated(ax, title, xlabel, ylabel, legend_loc='best',
                         break
         if has_plotted_data:
              ax.set_ylim(bottom=0)
-
-    if xlim_max is not None and ax.has_data():
-        current_xlim_left, _ = ax.get_xlim()
-        ax.set_xlim(left=current_xlim_left, right=xlim_max)
 
     if custom_legend_handles and custom_legend_labels:
         ax.legend(custom_legend_handles, custom_legend_labels, loc=legend_loc, fontsize=10)
@@ -283,7 +291,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate graphs from AGGREGATED simulation CSV logs.")
     parser.add_argument("csv_filename", type=str, help="Name of the aggregated CSV file (e.g., log_ucb1_average.csv).")
     parser.add_argument("--output_dir",type=str,default=DEFAULT_IMG_DIR,help=f"Base directory to save graphs. Default: {DEFAULT_IMG_DIR}")
-    parser.add_argument("--verbose","-v",action="store_true",help="Enable DEBUG logging.") 
+    parser.add_argument("--verbose","-v",action="store_true",help="Enable DEBUG logging.")
     args = parser.parse_args()
 
     _handler_main_agg = logging.StreamHandler()

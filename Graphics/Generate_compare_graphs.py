@@ -6,6 +6,7 @@ import re
 import argparse
 import logging
 import numpy as np
+import math
 
 logger = logging.getLogger("compare_strategies")
 
@@ -74,9 +75,17 @@ def format_comparison_plot(ax, title, xlabel, ylabel, legend_loc='best',
     ax.set_xlabel(xlabel, fontsize=14)
     ax.set_ylabel(ylabel, fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=12)
+
     if xlim_max is not None and ax.has_data():
-        current_xlim_left, _ = ax.get_xlim()
-        ax.set_xlim(left=current_xlim_left if current_xlim_left < xlim_max else 0, right=xlim_max)
+        ax.set_xticks(np.arange(0, xlim_max + 1, 15))
+        ax.set_xlim(left=0, right=xlim_max)
+    elif ax.has_data():
+        current_xlim_left, current_xlim_right = ax.get_xlim()
+        start_tick = 0
+        if current_xlim_left > 7.5 :
+             start_tick = math.floor(current_xlim_left / 15) * 15
+        ax.set_xticks(np.arange(start_tick, current_xlim_right + 1, 15))
+
     if custom_legend_handles and custom_legend_labels:
         unique_entries = {}
         final_handles, final_labels = [], []
