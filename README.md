@@ -171,7 +171,7 @@ Use `aggregate_logs.py` to combine multiple runs of a strategy into a single "av
     python3 aggregate_logs.py ucb1
     python3 aggregate_logs.py epsilon_greedy
     python3 aggregate_logs.py random
-    python3 aggregate_logs.py oracle_best_choice 
+    python3 aggregate_logs.py oracle_best_choice
     python3 aggregate_logs.py no_steering
     ```
     This creates files like `Graphics/Logs/Average/log_d_ucb_average.csv`.
@@ -180,8 +180,8 @@ Use `aggregate_logs.py` to combine multiple runs of a strategy into a single "av
     python3 aggregate_logs.py d_ucb --suffix_pattern _myTest
     ```
 
-**Step 2: Generate Graphs from Aggregated Log Files**
-Use `Generate_aggregated_graphs.py` to visualize the average behavior from a single *aggregated* `_average.csv` file. X-axes are limited to 150 seconds (configurable in the script).
+**Step 2: Generate Graphs from Aggregated Log Files (Time Series)**
+Use `Generate_aggregated_graphs.py` to visualize the average behavior (as time series plots) from a single *aggregated* `_average.csv` file. X-axes are limited to 150 seconds (configurable in the script).
 
 *   **To process a specific aggregated log file (examples run from `Graphics/` directory):**
     ```bash
@@ -193,7 +193,21 @@ Use `Generate_aggregated_graphs.py` to visualize the average behavior from a sin
     ```
     Graphs are saved in subdirectories within `Graphics/Img/`.
 
-**Step 3: Generate Comparative Analysis Table for Strategy Accuracy**
+**Step 3: Generate Boxplots for Latency Distribution (Individual and Comparison)**
+Use `Generate_boxplots.py` to visualize the distribution of a chosen metric (e.g., `experienced_latency_ms`) for each strategy individually and all strategies side-by-side. This script reads from `Graphics/Logs/Average/`.
+
+*   **To generate boxplots using the default metric (`experienced_latency_ms`):**
+    ```bash
+    python3 Generate_boxplots.py
+    ```
+    *   You can also specify other metrics:
+        ```bash
+        python3 Generate_boxplots.py --metric experienced_latency_ms_CLIENT
+        python3 Generate_boxplots.py --metric dynamic_best_server_latency
+        ```
+    Individual and comparison boxplots are saved in `Graphics/Img/boxplots/`.
+
+**Step 4: Generate Comparative Analysis Table for Strategy Accuracy**
 Use `analyze_server_choices.py`. It processes `*_average.csv` files found in `Graphics/Logs/Average/`.
 *   **Run the script (from `Graphics/` directory):**
     ```bash
@@ -201,7 +215,7 @@ Use `analyze_server_choices.py`. It processes `*_average.csv` files found in `Gr
     ```
     This script outputs a CSV table and an image of the table comparing the accuracy of different strategies.
 
-**Step 4: Generate a Single Graph Comparing Average Latencies Across All Strategies**
+**Step 5: Generate a Single Graph Comparing Average Latencies Across All Strategies (Time Series)**
 Use `Generate_compare_graphs.py`. The X-axis is limited to 150 seconds (configurable in the script).
 *   **To compare the default metric (`experienced_latency_ms`):**
     ```bash
@@ -214,7 +228,7 @@ Use `Generate_compare_graphs.py`. The X-axis is limited to 150 seconds (configur
         ```
     The comparison graph is saved in `Graphics/Img/`.
 
-**(Optional) Step 5: Generate Detailed Graphs for Individual Simulation Runs**
+**(Optional) Step 6: Generate Detailed Graphs for Individual Simulation Runs (Time Series)**
 Use `Generate_graphs.py` for a single, *non-aggregated* simulation log file.
 *   **To process a specific individual log file (example for D-UCB, run from `Graphics/` directory):**
     ```bash
