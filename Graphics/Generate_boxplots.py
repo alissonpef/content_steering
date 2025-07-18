@@ -4,7 +4,6 @@ import os
 import re
 import argparse
 import logging
-import numpy as np
 
 logger = logging.getLogger("generate_boxplots")
 
@@ -19,33 +18,16 @@ STRATEGY_STYLES = {
     "oracle_best_choice": {"label": "Optimal Strategy", "color": "tab:purple"},
     "no_steering": {"label": "No Steering", "color": "tab:brown"},
     "d_ucb": {"label": "D-UCB", "color": "tab:cyan"},
+    "linucb": {"label": "LinUCB", "color": "tab:pink"},
     "default": {"label": "Unknown", "color": "tab:grey"}
 }
-KNOWN_STRATEGY_KEYS = list(STRATEGY_STYLES.keys())
-if "default" in KNOWN_STRATEGY_KEYS:
-    KNOWN_STRATEGY_KEYS.remove("default")
 
 def extract_strategy_name_from_filename(filename_no_ext: str) -> str:
-    for known_key in KNOWN_STRATEGY_KEYS:
-        if f"log_{known_key}_average" in filename_no_ext:
-            if filename_no_ext == f"log_{known_key}_average" or \
-               filename_no_ext.startswith(f"log_{known_key}_average_"):
-                is_prefix_of_another = False
-                if known_key == "ucb1" and "d_ucb" in filename_no_ext and "log_d_ucb" in filename_no_ext:
-                    is_prefix_of_another = True
-                if not is_prefix_of_another:
-                    return known_key
-
-    match_generic = re.match(r"log_([a-zA-Z0-9_]+?)_average", filename_no_ext)
-    if match_generic:
-        potential_strategy = match_generic.group(1)
-        for known_key in KNOWN_STRATEGY_KEYS:
-            if potential_strategy == known_key:
-                return known_key
-        return potential_strategy
-    logger.warning(f"Could not extract strategy name from '{filename_no_ext}'. Returning 'Unknown'.")
+    match = re.match(r"log_([a-zA-Z0-9_]+?)_average", filename_no_ext)
+    if match:
+        return match.group(1)
+    logger.warning(f"Could not extract strategy name from '{filename_no_ext}'.")
     return "Unknown"
-
 
 def generate_individual_boxplot(df: pd.DataFrame, strategy_name_key: str, metric_column: str, output_dir: str):
     if df.empty or metric_column not in df.columns or df[metric_column].dropna().empty:
@@ -65,7 +47,6 @@ def generate_individual_boxplot(df: pd.DataFrame, strategy_name_key: str, metric
     for median in bp['medians']:
         median.set_color('black')
 
-
     plot_title = f"Latency Distribution: {label}"
     plt.title(plot_title, fontsize=14)
     plt.ylabel(f"{metric_column.replace('_', ' ').title()} (ms)", fontsize=12)
@@ -83,7 +64,6 @@ def generate_individual_boxplot(df: pd.DataFrame, strategy_name_key: str, metric
         logger.error(f"Error saving individual boxplot {filename}: {e}")
     finally:
         plt.close()
-
 
 def generate_comparison_boxplot(all_strategy_data: dict, metric_column: str, output_dir: str):
     plot_data = []
@@ -115,7 +95,6 @@ def generate_comparison_boxplot(all_strategy_data: dict, metric_column: str, out
     for median in bp['medians']:
         median.set_color('black')
 
-
     plt.title(f"Comparison of {metric_column.replace('_', ' ').title()} Distribution by Strategy", fontsize=16)
     plt.ylabel(f"{metric_column.replace('_', ' ').title()} (ms)", fontsize=14)
     plt.xlabel("Strategy", fontsize=14)
@@ -134,7 +113,6 @@ def generate_comparison_boxplot(all_strategy_data: dict, metric_column: str, out
     finally:
         plt.close()
 
-
 def main():
     parser = argparse.ArgumentParser(description="Generate individual and comparison boxplots from aggregated simulation logs.")
     parser.add_argument("--agg_dir", type=str, default=DEFAULT_AVERAGE_LOGS_DIR,
@@ -151,9 +129,8 @@ def main():
     log_level_to_set = logging.DEBUG if args.verbose else logging.INFO
     _formatter_boxplot = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
     _handler_boxplot.setFormatter(_formatter_boxplot)
-    if logger.hasHandlers():
-        logger.handlers.clear()
-    logger.addHandler(_handler_boxplot)
+    if not logger.handlers:
+        logger.addHandler(_handler_boxplot)
     logger.setLevel(log_level_to_set)
 
     logger.info(f"Logging level set to {logging.getLevelName(logger.getEffectiveLevel())}.")
@@ -179,7 +156,7 @@ def main():
                 strategy_key = extract_strategy_name_from_filename(filename_no_ext)
 
                 if strategy_key == "Unknown":
-                    logger.warning(f"Could not determine strategy for {filename}. Skipping individual boxplot.")
+                    logger.warning(f"Could not determine strategy for {filename}. Skipping.")
                 else:
                     generate_individual_boxplot(df_agg, strategy_key, args.metric, args.output_dir)
                     all_strategy_data_for_comparison[strategy_key] = df_agg.copy()

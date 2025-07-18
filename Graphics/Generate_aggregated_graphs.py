@@ -79,17 +79,8 @@ def format_plot_aggregated(ax, title, xlabel, ylabel, legend_loc='best',
         ax.set_yscale('log')
         if ax.has_data(): ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
     else:
-        has_plotted_data = False
         if ax.has_data():
-            for line in ax.get_lines():
-                ydata = line.get_ydata()
-                if isinstance(ydata, (pd.Series, np.ndarray)) and ydata.size > 0:
-                    numeric_ydata = pd.to_numeric(ydata, errors='coerce')
-                    if np.any(numeric_ydata[~np.isnan(numeric_ydata)] >= 0):
-                        has_plotted_data = True
-                        break
-        if has_plotted_data:
-             ax.set_ylim(bottom=0)
+            ax.set_ylim(bottom=0)
 
     if custom_legend_handles and custom_legend_labels:
         ax.legend(custom_legend_handles, custom_legend_labels, loc=legend_loc, fontsize=10)
@@ -124,8 +115,9 @@ def generate_plots_for_aggregated(csv_file_path: str):
         if match: strategy_name_from_df = match.group(1)
 
     strategy_display_name = strategy_name_from_df.replace("_", " ").title()
-    if strategy_name_from_df == "d_ucb":
-        strategy_display_name = "D-UCB"
+    if strategy_name_from_df == "d_ucb": strategy_display_name = "D-UCB"
+    if strategy_name_from_df == "linucb": strategy_display_name = "LinUCB"
+
 
     xlim_for_plots = AGGREGATED_X_AXIS_LIMIT
     df_agg = df_agg[df_agg['sim_time_client'] <= xlim_for_plots].copy()
@@ -134,96 +126,78 @@ def generate_plots_for_aggregated(csv_file_path: str):
         return
 
     fig1, ax1 = plt.subplots(figsize=(12, 6))
-    plot_made_g1 = False
-    legend1_handles, legend1_labels = [], []
-    if 'experienced_latency_ms' in df_agg.columns and 'sim_time_client' in df_agg.columns:
+    if 'experienced_latency_ms' in df_agg.columns and 'dynamic_best_server_latency' in df_agg.columns:
+        legend1_handles, legend1_labels = [], []
         df_plot_chosen_oracle = df_agg.dropna(subset=['sim_time_client', 'experienced_latency_ms'])
-        if not df_plot_chosen_oracle.empty:
-            line_chosen, = ax1.plot(df_plot_chosen_oracle['sim_time_client'], df_plot_chosen_oracle['experienced_latency_ms'],
-                                    marker='.', linestyle='-', markersize=4, alpha=0.8, color='darkblue')
-            legend1_handles.append(line_chosen)
-            legend1_labels.append('Avg. Chosen Server Latency')
-            plot_made_g1 = True
-    if 'dynamic_best_server_latency' in df_agg.columns and 'sim_time_client' in df_agg.columns:
+        line_chosen, = ax1.plot(df_plot_chosen_oracle['sim_time_client'], df_plot_chosen_oracle['experienced_latency_ms'],
+                                marker='.', linestyle='-', markersize=4, alpha=0.8, color='darkblue')
+        legend1_handles.append(line_chosen)
+        legend1_labels.append('Avg. Chosen Server Latency')
+        
         df_plot_optimal_oracle = df_agg.dropna(subset=['sim_time_client', 'dynamic_best_server_latency'])
-        if not df_plot_optimal_oracle.empty:
-            line_optimal, = ax1.plot(df_plot_optimal_oracle['sim_time_client'], df_plot_optimal_oracle['dynamic_best_server_latency'],
-                                     marker='.', linestyle='--', markersize=4, alpha=0.7, color='tab:red')
-            legend1_handles.append(line_optimal)
-            legend1_labels.append('Avg. Optimal Server Latency')
-            plot_made_g1 = True
-    if plot_made_g1:
+        line_optimal, = ax1.plot(df_plot_optimal_oracle['sim_time_client'], df_plot_optimal_oracle['dynamic_best_server_latency'],
+                                 marker='.', linestyle='--', markersize=4, alpha=0.7, color='tab:red')
+        legend1_handles.append(line_optimal)
+        legend1_labels.append('Avg. Optimal Server Latency')
+        
         format_plot_aggregated(ax1, f"Average Chosen Server Latency vs Optimal Latency\nStrategy: {strategy_display_name}",
                                "Average Simulation Time (s)", "Average Latency (ms)", legend_loc='upper right',
                                custom_legend_handles=legend1_handles, custom_legend_labels=legend1_labels,
                                xlim_max=xlim_for_plots)
         plt.savefig(os.path.join(current_img_dir, "1_avg_latency_chosen_vs_optimal.png"))
     else:
-        logger.warning(f"Insufficient data for Plot 1 (Aggregated) for {csv_filename_no_ext}.")
+        logger.info(f"Plot 1 (Latency vs Optimal) skipped: Missing required columns.")
     plt.close(fig1)
 
-    fig2, ax2 = plt.subplots(figsize=(12, 6))
-    plot_made_g2 = False
-    legend2_handles, legend2_labels = [], []
-    y_label_g2 = "Average Estimated RL Value"
-    value_cols_agg = sorted([col for col in df_agg.columns if col.startswith('value_') and any(k_u in col for k_u in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)])
-    if value_cols_agg and 'sim_time_client' in df_agg.columns:
-        if strategy_name_from_df.lower() == "epsilon_greedy":
-            y_label_g2 = "Average Estimated Reward (from 1000/latency)"
-        elif "ucb" in strategy_name_from_df.lower():
+    value_cols_agg = [col for col in df_agg.columns if col.startswith('value_')]
+    if value_cols_agg:
+        fig2, ax2 = plt.subplots(figsize=(12, 6))
+        legend2_handles, legend2_labels = [], []
+        y_label_g2 = "Average Estimated RL Value"
+        if "ucb" in strategy_name_from_df.lower():
             y_label_g2 = f"Average Estimated Reward ({strategy_display_name})"
+        elif strategy_name_from_df.lower() == "epsilon_greedy":
+            y_label_g2 = "Average Estimated Latency (Punishment)"
+        
         for col_name in value_cols_agg:
             server_key_u = col_name.replace('value_', '')
             server_key_h = server_key_u.replace('_', '-')
             color = SERVER_COLORS.get(server_key_h, 'grey')
             label_text = SERVER_DISPLAY_NAMES.get(server_key_h, server_key_u)
-            df_subset = df_agg.dropna(subset=['sim_time_client', col_name]).copy()
-            if strategy_name_from_df.lower() == "epsilon_greedy":
-                df_subset.loc[:, col_name] = df_subset[col_name].apply(lambda x: 1000.0 / x if isinstance(x, (int,float)) and x > 0 else 0.0)
+            df_subset = df_agg.dropna(subset=['sim_time_client', col_name])
             if not df_subset.empty:
                 line, = ax2.plot(df_subset['sim_time_client'], df_subset[col_name],
                                  marker='.', linestyle='-', markersize=3, alpha=0.8, color=color)
                 if not any(l == label_text for l in legend2_labels):
                     legend2_handles.append(line)
                     legend2_labels.append(label_text)
-                plot_made_g2 = True
-        if plot_made_g2:
-            format_plot_aggregated(ax2, f"Average RL Algorithm's Estimated Server Values\nStrategy: {strategy_display_name}",
-                                   "Average Simulation Time (s)", y_label_g2, legend_loc='upper right',
-                                   custom_legend_handles=legend2_handles, custom_legend_labels=legend2_labels,
-                                   xlim_max=xlim_for_plots)
-            plt.savefig(os.path.join(current_img_dir, "2_avg_rl_estimated_values.png"))
-        else: logger.warning(f"No valid 'value_*' columns for Plot 2 (Aggregated) for {csv_filename_no_ext}.")
-    elif any(s_rl in strategy_name_from_df.lower() for s_rl in ["epsilon_greedy", "ucb1", "d_ucb"]):
-        logger.info(f"No 'value_*' columns found for Plot 2 (Aggregated) for {strategy_display_name}.")
-    plt.close(fig2)
-
-    fig3, ax3 = plt.subplots(figsize=(12, 6))
-    plot_made_g3 = False
-    legend3_handles, legend3_labels = [], []
-    y_label_rl_counts_agg = "Average Number of Selections (Pulls)"
-    actual_count_cols_prefix = 'actual_count_'
-    count_cols_prefix = 'count_'
-    cols_to_plot_counts = []
-    prefix_in_use_for_counts = count_cols_prefix
-    if strategy_name_from_df.lower() == "d_ucb":
-        potential_actual_cols = sorted([col for col in df_agg.columns if col.startswith(actual_count_cols_prefix) and any(k_u in col.replace(actual_count_cols_prefix,'') for k_u in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)])
-        if potential_actual_cols:
-            cols_to_plot_counts = potential_actual_cols
-            prefix_in_use_for_counts = actual_count_cols_prefix
-            y_label_rl_counts_agg = "Avg. Actual Selections (D-UCB)"
-            logger.info(f"D-UCB (Aggregated): Using '{actual_count_cols_prefix}*' columns for pull counts plot.")
-        else:
-            cols_to_plot_counts = sorted([col for col in df_agg.columns if col.startswith(count_cols_prefix) and any(k_u in col.replace(count_cols_prefix,'') for k_u in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)])
-            prefix_in_use_for_counts = count_cols_prefix
-            y_label_rl_counts_agg = "Avg. Discounted Selections (D-UCB - Fallback)"
-            logger.warning(f"D-UCB (Aggregated): '{actual_count_cols_prefix}*' columns not found. Using '{count_cols_prefix}*'.")
+        
+        format_plot_aggregated(ax2, f"Average RL Algorithm's Estimated Server Values\nStrategy: {strategy_display_name}",
+                               "Average Simulation Time (s)", y_label_g2, legend_loc='upper right',
+                               custom_legend_handles=legend2_handles, custom_legend_labels=legend2_labels,
+                               xlim_max=xlim_for_plots)
+        plt.savefig(os.path.join(current_img_dir, "2_avg_rl_estimated_values.png"))
+        plt.close(fig2)
     else:
-        cols_to_plot_counts = sorted([col for col in df_agg.columns if col.startswith(count_cols_prefix) and any(k_u in col.replace(count_cols_prefix,'') for k_u in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)])
-        prefix_in_use_for_counts = count_cols_prefix
-    if cols_to_plot_counts and 'sim_time_client' in df_agg.columns:
+        logger.info(f"Plot 2 (RL Values) skipped: No 'value_*' columns found for {strategy_display_name}.")
+
+    actual_count_cols = [col for col in df_agg.columns if col.startswith('actual_count_')]
+    count_cols = [col for col in df_agg.columns if col.startswith('count_')]
+    cols_to_plot_counts, prefix_in_use, y_label_g3 = [], None, "Avg. Selections (Pulls)"
+    
+    if strategy_name_from_df.lower() == "d_ucb" and actual_count_cols:
+        cols_to_plot_counts, prefix_in_use = actual_count_cols, 'actual_count_'
+        y_label_g3 = "Avg. Actual Selections (D-UCB)"
+    elif count_cols:
+        cols_to_plot_counts, prefix_in_use = count_cols, 'count_'
+        if strategy_name_from_df.lower() == "d_ucb":
+            y_label_g3 = "Avg. Discounted Selections (D-UCB Fallback)"
+
+    if cols_to_plot_counts:
+        fig3, ax3 = plt.subplots(figsize=(12, 6))
+        legend3_handles, legend3_labels = [], []
         for col_name in cols_to_plot_counts:
-            server_key_u = col_name.replace(prefix_in_use_for_counts, '')
+            server_key_u = col_name.replace(prefix_in_use, '')
             server_key_h = server_key_u.replace('_', '-')
             color = SERVER_COLORS.get(server_key_h, 'grey')
             label_text = SERVER_DISPLAY_NAMES.get(server_key_h, server_key_u)
@@ -234,56 +208,46 @@ def generate_plots_for_aggregated(csv_file_path: str):
                 if not any(l == label_text for l in legend3_labels):
                     legend3_handles.append(line)
                     legend3_labels.append(label_text)
-                plot_made_g3 = True
-        if plot_made_g3:
-            format_plot_aggregated(ax3, f"Average RL Algorithm's Server Selection Counts\nStrategy: {strategy_display_name}",
-                                   "Average Simulation Time (s)", y_label_rl_counts_agg, legend_loc='upper left',
-                                   custom_legend_handles=legend3_handles, custom_legend_labels=legend3_labels,
-                                   xlim_max=xlim_for_plots)
-            plt.savefig(os.path.join(current_img_dir, "3_avg_rl_selection_counts.png"))
-        else:
-            logger.warning(f"No valid '{prefix_in_use_for_counts}*' columns for Plot 3 (Aggregated) for {csv_filename_no_ext}.")
-    elif any(s_rl in strategy_name_from_df.lower() for s_rl in ["epsilon_greedy", "ucb1", "d_ucb"]):
-        logger.info(f"No appropriate count columns found for Plot 3 (Aggregated) for {strategy_display_name}.")
-    plt.close(fig3)
-
-    fig4, ax4 = plt.subplots(figsize=(12, 6))
-    plot_made_g4 = False
-    legend4_handles, legend4_labels = [], []
+        
+        format_plot_aggregated(ax3, f"Average RL Algorithm's Server Selection Counts\nStrategy: {strategy_display_name}",
+                               "Average Simulation Time (s)", y_label_g3, legend_loc='upper left',
+                               custom_legend_handles=legend3_handles, custom_legend_labels=legend3_labels,
+                               xlim_max=xlim_for_plots)
+        plt.savefig(os.path.join(current_img_dir, "3_avg_rl_selection_counts.png"))
+        plt.close(fig3)
+    else:
+        logger.info(f"Plot 3 (RL Counts) skipped: No RL count columns found for {strategy_display_name}.")
+        
     if 'all_servers_oracle_latency_json' in df_agg.columns and not df_agg['all_servers_oracle_latency_json'].dropna().empty:
+        fig4, ax4 = plt.subplots(figsize=(12, 6))
+        legend4_handles, legend4_labels = [], []
         df_all_lat_agg_parsed = parse_json_series_to_dataframe(df_agg['all_servers_oracle_latency_json'].dropna(), prefix="")
         if not df_all_lat_agg_parsed.empty:
             df_all_lat_agg_with_time = pd.concat([
                 df_agg.loc[df_all_lat_agg_parsed.index, 'sim_time_client'], df_all_lat_agg_parsed
             ], axis=1).reset_index(drop=True)
-            if not df_all_lat_agg_with_time.empty and 'sim_time_client' in df_all_lat_agg_with_time.columns:
-                all_oracle_cols = sorted([
-                    col for col in df_all_lat_agg_with_time.columns
-                    if col != 'sim_time_client' and col in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE
-                ])
-                for server_col_u in all_oracle_cols:
-                    server_col_h = server_col_u.replace('_', '-')
-                    color = SERVER_COLORS.get(server_col_h, 'grey')
-                    label_text = SERVER_DISPLAY_NAMES.get(server_col_h, server_col_u)
-                    df_subset = df_all_lat_agg_with_time.dropna(subset=['sim_time_client', server_col_u])
-                    if not df_subset.empty:
-                        line, = ax4.plot(df_subset['sim_time_client'], df_subset[server_col_u],
-                                         marker='.', linestyle='-', markersize=2, alpha=0.7, color=color)
-                        if not any(l == label_text for l in legend4_labels):
-                            legend4_handles.append(line)
-                            legend4_labels.append(label_text)
-                        plot_made_g4 = True
-                if plot_made_g4:
-                    format_plot_aggregated(ax4, f"Average Simulated Latency Landscape for All Servers\nStrategy: {strategy_display_name}",
-                                           "Average Simulation Time (s)", "Average Simulated Latency (ms)", legend_loc='upper right',
-                                           custom_legend_handles=legend4_handles, custom_legend_labels=legend4_labels,
-                                           xlim_max=xlim_for_plots)
-                    plt.savefig(os.path.join(current_img_dir, "4_avg_all_servers_oracle_latency.png"))
-                else: logger.info(f"No valid columns for Plot 4 (Aggregated) for {csv_filename_no_ext}.")
-            else: logger.info(f"Empty DataFrame or missing sim_time_client for Plot 4 (Aggregated) for {csv_filename_no_ext}.")
-        else: logger.info(f"DataFrame 'all_servers_oracle_latency_json' (aggregated) empty after parse for Plot 4 for {csv_filename_no_ext}.")
-    else: logger.info(f"Column 'all_servers_oracle_latency_json' not found for Plot 4 (Aggregated) for {csv_filename_no_ext}.")
-    plt.close(fig4)
+            
+            all_oracle_cols = sorted([c for c in df_all_lat_agg_with_time.columns if c in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE])
+            for server_col_u in all_oracle_cols:
+                server_col_h = server_col_u.replace('_', '-')
+                color = SERVER_COLORS.get(server_col_h, 'grey')
+                label_text = SERVER_DISPLAY_NAMES.get(server_col_h, server_col_u)
+                df_subset = df_all_lat_agg_with_time.dropna(subset=['sim_time_client', server_col_u])
+                if not df_subset.empty:
+                    line, = ax4.plot(df_subset['sim_time_client'], df_subset[server_col_u],
+                                     marker='.', linestyle='-', markersize=2, alpha=0.7, color=color)
+                    if not any(l == label_text for l in legend4_labels):
+                        legend4_handles.append(line)
+                        legend4_labels.append(label_text)
+            
+            format_plot_aggregated(ax4, f"Average Simulated Latency Landscape for All Servers\nStrategy: {strategy_display_name}",
+                                   "Average Simulation Time (s)", "Average Simulated Latency (ms)", legend_loc='upper right',
+                                   custom_legend_handles=legend4_handles, custom_legend_labels=legend4_labels,
+                                   xlim_max=xlim_for_plots)
+            plt.savefig(os.path.join(current_img_dir, "4_avg_all_servers_oracle_latency.png"))
+        plt.close(fig4)
+    else:
+        logger.info(f"Plot 4 (Latency Landscape) skipped: 'all_servers_oracle_latency_json' not found or empty.")
 
     logger.info(f"Aggregated graph generation for '{csv_filename_no_ext}' complete. Saved in: {current_img_dir}")
 
@@ -298,9 +262,8 @@ if __name__ == "__main__":
     log_level_to_set = logging.DEBUG if args.verbose else logging.INFO
     _formatter_main_agg = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
     _handler_main_agg.setFormatter(_formatter_main_agg)
-    if logger.hasHandlers():
-        logger.handlers.clear()
-    logger.addHandler(_handler_main_agg)
+    if not logger.handlers:
+        logger.addHandler(_handler_main_agg)
     logger.setLevel(log_level_to_set)
 
     logger.info(f"Logging level set to {logging.getLevelName(logger.getEffectiveLevel())}.")
@@ -310,13 +273,9 @@ if __name__ == "__main__":
         potential_path = os.path.join(DEFAULT_AGG_DATA_DIR, csv_path)
         if os.path.exists(potential_path):
             csv_path = potential_path
-        elif not csv_path.lower().endswith(".csv"):
-            potential_path_with_ext = os.path.join(DEFAULT_AGG_DATA_DIR, csv_path + ".csv")
-            if os.path.exists(potential_path_with_ext):
-                csv_path = potential_path_with_ext
-    logger.info(f"Processing aggregated file: {os.path.basename(csv_path)}")
-    abs_path = os.path.abspath(csv_path)
-    if not os.path.exists(abs_path):
-        logger.error(f"Final file not found: {abs_path}")
+    
+    if os.path.exists(csv_path):
+        logger.info(f"Processing aggregated file: {os.path.basename(csv_path)}")
+        generate_plots_for_aggregated(csv_path)
     else:
-        generate_plots_for_aggregated(abs_path)
+        logger.error(f"File not found: {csv_path}")

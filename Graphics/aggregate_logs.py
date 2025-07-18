@@ -65,13 +65,7 @@ def parse_json_series_to_dataframe(series: pd.Series, prefix: str = "") -> pd.Da
         except (json.JSONDecodeError, TypeError):
             logger.debug(f"Failed to parse JSON in parse_json_series_to_dataframe: '{str(json_str)[:70]}...'")
             temp_parsed_dicts.append({})
-    final_column_keys = all_normalized_keys_in_series
-    if not final_column_keys:
-        if prefix.startswith("value_") or prefix.startswith("count_") or prefix.startswith("actual_count_") or prefix == "":
-            final_column_keys = set(KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)
-        else:
-             if not parsed_rows and not temp_parsed_dicts :
-                 return pd.DataFrame(columns=list(f"{prefix}{key}" for key in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE))
+    final_column_keys = all_normalized_keys_in_series.union(set(KNOWN_CACHE_SERVER_KEYS_UNDERSCORE))
     prefixed_final_column_keys = {f"{prefix}{key}" for key in final_column_keys}
     for norm_dict in temp_parsed_dicts:
         row_data = {prefixed_key: norm_dict.get(prefixed_key.replace(prefix, "", 1)) for prefixed_key in prefixed_final_column_keys}
@@ -107,10 +101,9 @@ def aggregate_strategy_logs(strategy_name: str, suffix_pattern: str = "",
     os.makedirs(output_dir, exist_ok=True)
     logger.info(f"{len(log_files)} file(s) for aggregation: {', '.join(map(os.path.basename, log_files))}")
     all_main_dfs, all_rl_values_dfs, all_rl_counts_dfs, all_rl_actual_counts_dfs, all_server_latencies_dfs = [], [], [], [], []
-
     actual_min_common_duration = float('inf')
-
     first_run_categorical_data = {}
+
     for i, f_path in enumerate(log_files):
         try:
             df_run = pd.read_csv(f_path, na_filter=True)
@@ -118,14 +111,10 @@ def aggregate_strategy_logs(strategy_name: str, suffix_pattern: str = "",
                 logger.warning(f"File {os.path.basename(f_path)} empty or missing 'sim_time_client'. Skipping.")
                 continue
             df_run.dropna(subset=['sim_time_client'], inplace=True)
-            if df_run.empty:
-                logger.warning(f"File {os.path.basename(f_path)} empty after removing NaNs from 'sim_time_client'. Skipping.")
-                continue
+            if df_run.empty: continue
 
             df_run = df_run[df_run['sim_time_client'] <= MAX_AGGREGATION_TIME_SECONDS].copy()
-            if df_run.empty:
-                logger.info(f"File {os.path.basename(f_path)} has no data up to {MAX_AGGREGATION_TIME_SECONDS}s. Skipping.")
-                continue
+            if df_run.empty: continue
 
             max_time_this_run_after_cap = df_run['sim_time_client'].max()
             if pd.notna(max_time_this_run_after_cap):
@@ -134,163 +123,109 @@ def aggregate_strategy_logs(strategy_name: str, suffix_pattern: str = "",
             if 'all_servers_oracle_latency_json' in df_run.columns:
                 best_info = df_run.apply(find_dynamic_best_server_and_latency_for_agg, axis=1)
                 df_run['dynamic_best_server_latency'] = best_info['dynamic_best_server_latency']
-            else:
-                df_run['dynamic_best_server_latency'] = np.nan
+            
             df_run['sim_time_group'] = df_run['sim_time_client'].round().astype(int)
 
             cols_to_avg = [col for col in EXPECTED_MAIN_NUMERIC_COLS if col in df_run.columns]
             all_main_dfs.append(df_run[['sim_time_group'] + cols_to_avg].copy())
+            
             if i == 0:
                 cols_cat = [col for col in EXPECTED_CATEGORICAL_COLS_FROM_FIRST_RUN if col in df_run.columns]
                 if cols_cat:
                     temp_cat_df = df_run.groupby('sim_time_group')[cols_cat].first().reset_index()
-                    temp_cat_df = temp_cat_df[temp_cat_df['sim_time_group'] <= MAX_AGGREGATION_TIME_SECONDS]
                     for _, row in temp_cat_df.iterrows():
-                        first_run_categorical_data[row['sim_time_group']] = {
-                            col: row[col] for col in cols_cat if pd.notna(row[col])
-                        }
+                        first_run_categorical_data[row['sim_time_group']] = {c: row[c] for c in cols_cat if pd.notna(row[c])}
+
             json_processing_map = [
                 ('rl_values_json', all_rl_values_dfs, 'value_'),
                 ('rl_counts_json', all_rl_counts_dfs, 'count_'),
+                ('rl_actual_counts_json', all_rl_actual_counts_dfs, 'actual_count_'),
                 ('all_servers_oracle_latency_json', all_server_latencies_dfs, '')
             ]
-            if 'rl_actual_counts_json' in df_run.columns:
-                logger.debug(f"Processing 'rl_actual_counts_json' from {os.path.basename(f_path)}")
-                json_processing_map.append(('rl_actual_counts_json', all_rl_actual_counts_dfs, 'actual_count_'))
 
-            for json_col_name, target_list, prefix in json_processing_map:
-                if json_col_name in df_run.columns and not df_run[json_col_name].dropna().empty:
-                    parsed_df = parse_json_series_to_dataframe(df_run[json_col_name], prefix=prefix)
+            for json_col, target_list, prefix in json_processing_map:
+                if json_col in df_run.columns and not df_run[json_col].dropna().empty:
+                    parsed_df = parse_json_series_to_dataframe(df_run[json_col], prefix=prefix)
                     if not parsed_df.empty:
-                        valid_indices_for_time_group = parsed_df.index.intersection(df_run.index)
-                        if not valid_indices_for_time_group.empty:
-                            parsed_df.loc[valid_indices_for_time_group, 'sim_time_group'] = df_run.loc[valid_indices_for_time_group, 'sim_time_group'].values
-                            parsed_df.dropna(subset=['sim_time_group'], inplace=True)
-                            parsed_df['sim_time_group'] = parsed_df['sim_time_group'].astype(int)
-                            parsed_df = parsed_df[parsed_df['sim_time_group'] <= MAX_AGGREGATION_TIME_SECONDS]
-                            if not parsed_df.empty:
-                                if prefix.startswith("value_") or prefix.startswith("count_") or prefix.startswith("actual_count_"):
-                                    target_list.append(parsed_df.groupby('sim_time_group').last().reset_index())
-                                else:
-                                    target_list.append(parsed_df)
+                        parsed_df['sim_time_group'] = df_run.loc[parsed_df.index, 'sim_time_group']
+                        parsed_df.dropna(subset=['sim_time_group'], inplace=True)
+                        parsed_df['sim_time_group'] = parsed_df['sim_time_group'].astype(int)
+                        target_list.append(parsed_df)
+
         except Exception as e:
             logger.error(f"Error processing {os.path.basename(f_path)}: {e}. Skipping.", exc_info=True)
 
     if not all_main_dfs:
-        logger.error("No valid main data found for aggregation.")
+        logger.error("No valid data found for aggregation.")
         return
 
-    effective_aggregation_duration = min(actual_min_common_duration if actual_min_common_duration != float('inf') else MAX_AGGREGATION_TIME_SECONDS,
-                                         MAX_AGGREGATION_TIME_SECONDS)
-    logger.info(f"Aggregating data up to effective simulation time of {effective_aggregation_duration:.2f}s (limit: {MAX_AGGREGATION_TIME_SECONDS}s).")
+    effective_duration = min(actual_min_common_duration, MAX_AGGREGATION_TIME_SECONDS)
+    logger.info(f"Aggregating data up to effective simulation time of {effective_duration:.2f}s.")
 
     combined_main_df = pd.concat(all_main_dfs)
-    combined_main_df = combined_main_df[combined_main_df['sim_time_group'] <= effective_aggregation_duration]
-    if combined_main_df.empty:
-        logger.error("Combined main DataFrame empty after final duration filter.")
-        return
-    agg_funcs_main = {col: (lambda x: np.nanmean(x.astype(float)) if pd.to_numeric(x, errors='coerce').notnull().any() else np.nan)
-                      for col in EXPECTED_MAIN_NUMERIC_COLS if col in combined_main_df.columns and col != 'sim_time_client'}
-    aggregated_df = combined_main_df.groupby('sim_time_group', as_index=False).agg(agg_funcs_main)
+    combined_main_df = combined_main_df[combined_main_df['sim_time_group'] <= effective_duration]
+    main_cols_to_agg = [col for col in combined_main_df.columns if col not in ['sim_time_group', 'sim_time_client']]
+    aggregated_df = combined_main_df.groupby('sim_time_group')[main_cols_to_agg].mean().reset_index()
     aggregated_df.rename(columns={'sim_time_group': 'sim_time_client'}, inplace=True)
 
     if first_run_categorical_data:
         cat_df = pd.DataFrame.from_dict(first_run_categorical_data, orient='index').reset_index()
         cat_df.rename(columns={'index': 'sim_time_client'}, inplace=True)
-        cat_df = cat_df[cat_df['sim_time_client'] <= effective_aggregation_duration]
-        if aggregated_df['sim_time_client'].dtype != cat_df['sim_time_client'].dtype:
-            try:
-                aggregated_df['sim_time_client'] = aggregated_df['sim_time_client'].astype(int)
-                cat_df['sim_time_client'] = cat_df['sim_time_client'].astype(int)
-            except ValueError:
-                logger.error("Could not convert 'sim_time_client' to int for merge.")
+        cat_df = cat_df[cat_df['sim_time_client'] <= effective_duration]
         aggregated_df = pd.merge(aggregated_df, cat_df, on='sim_time_client', how='left')
 
     json_data_to_merge_final = [
-        (all_server_latencies_dfs, False, ""),
-        (all_rl_values_dfs, True, "value_"),
-        (all_rl_counts_dfs, True, "count_")
+        (all_server_latencies_dfs, "oracle_latency_json"),
+        (all_rl_values_dfs, "rl_values"),
+        (all_rl_counts_dfs, "rl_counts"),
+        (all_rl_actual_counts_dfs, "rl_actual_counts")
     ]
-    if all_rl_actual_counts_dfs:
-        json_data_to_merge_final.append((all_rl_actual_counts_dfs, True, "actual_count_"))
 
-    for data_list, is_rl_data_type, original_prefix in json_data_to_merge_final:
+    for data_list, data_type in json_data_to_merge_final:
         if data_list:
-            combined_json_df = pd.concat(data_list)
-            if not combined_json_df.empty and 'sim_time_group' in combined_json_df.columns:
-                combined_json_df = combined_json_df[combined_json_df['sim_time_group'] <= effective_aggregation_duration]
+            combined_json_df = pd.concat(data_list).dropna(how='all', axis=1)
+            if 'sim_time_group' in combined_json_df.columns:
+                combined_json_df = combined_json_df[combined_json_df['sim_time_group'] <= effective_duration]
                 if combined_json_df.empty: continue
+                
+                numeric_cols = [c for c in combined_json_df.columns if c != 'sim_time_group']
+                avg_json_df = combined_json_df.groupby('sim_time_group')[numeric_cols].mean().reset_index()
+                avg_json_df.rename(columns={'sim_time_group': 'sim_time_client'}, inplace=True)
 
-                combined_json_df.dropna(subset=['sim_time_group'], inplace=True)
-                combined_json_df['sim_time_group'] = combined_json_df['sim_time_group'].astype(int)
-                combined_json_df = combined_json_df[combined_json_df['sim_time_group'].isin(aggregated_df['sim_time_client'])]
-                if not combined_json_df.empty:
-                    numeric_cols_to_avg_json = [col for col in combined_json_df.columns if col != 'sim_time_group' and pd.api.types.is_numeric_dtype(combined_json_df[col])]
-                    if numeric_cols_to_avg_json:
-                        avg_json_df = combined_json_df.groupby('sim_time_group')[numeric_cols_to_avg_json].mean().reset_index()
-                        avg_json_df.rename(columns={'sim_time_group': 'sim_time_client'}, inplace=True)
-                        if original_prefix == "":
-                            server_latency_cols = [col for col in avg_json_df.columns if col in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE]
-                            if server_latency_cols:
-                                avg_json_df['all_servers_oracle_latency_json_AGG'] = avg_json_df.apply(
-                                    lambda row: json.dumps({col: row[col] for col in server_latency_cols if pd.notna(row[col])}),axis=1)
-                                df_to_merge = avg_json_df[['sim_time_client', 'all_servers_oracle_latency_json_AGG']].copy()
-                                df_to_merge.rename(columns={'all_servers_oracle_latency_json_AGG': 'all_servers_oracle_latency_json'}, inplace=True)
-                                if 'all_servers_oracle_latency_json' in aggregated_df.columns:
-                                    aggregated_df = aggregated_df.drop(columns=['all_servers_oracle_latency_json'])
-                                aggregated_df = pd.merge(aggregated_df, df_to_merge, on='sim_time_client', how='left')
-                        else:
-                            aggregated_df = pd.merge(aggregated_df, avg_json_df, on='sim_time_client', how='left')
-                    elif not combined_json_df.drop(columns=['sim_time_group'], errors='ignore').empty:
-                         logger.debug(f"No numeric columns to aggregate in JSON (prefix: {original_prefix}). Columns: {combined_json_df.columns.tolist()}")
+                if data_type == "oracle_latency_json":
+                    server_latency_cols = [c for c in avg_json_df.columns if c in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE]
+                    if server_latency_cols:
+                        avg_json_df['all_servers_oracle_latency_json'] = avg_json_df.apply(
+                            lambda row: json.dumps({c: row[c] for c in server_latency_cols if pd.notna(row[c])}), axis=1)
+                        aggregated_df = pd.merge(aggregated_df, avg_json_df[['sim_time_client', 'all_servers_oracle_latency_json']], on='sim_time_client', how='left')
+                else:
+                    aggregated_df = pd.merge(aggregated_df, avg_json_df, on='sim_time_client', how='left')
+
     if aggregated_df.empty:
         logger.error("Final aggregated DataFrame is empty.")
         return
 
-    final_cols_order_base = [
+    preferred_order = [
         "sim_time_client", "client_lat", "client_lon",
-        "experienced_latency_ms_CLIENT", "experienced_latency_ms_ORACLE", "experienced_latency_ms",
-        "dynamic_best_server_latency",
-        "all_servers_oracle_latency_json",
+        "experienced_latency_ms", "experienced_latency_ms_CLIENT", "experienced_latency_ms_ORACLE",
+        "dynamic_best_server_latency", "all_servers_oracle_latency_json",
         "steering_decision_main_server", "rl_strategy", "gamma_value"
     ]
-    value_cols = sorted([col for col in aggregated_df.columns if col.startswith('value_')])
-    count_cols = sorted([col for col in aggregated_df.columns if col.startswith('count_')])
-    actual_count_cols = sorted([col for col in aggregated_df.columns if col.startswith('actual_count_')])
+    existing_cols = set(aggregated_df.columns)
+    final_cols = [col for col in preferred_order if col in existing_cols]
+    remaining_cols = sorted(list(existing_cols - set(final_cols)))
+    final_cols.extend(remaining_cols)
 
-    final_ordered_cols = []
-    for col in final_cols_order_base:
-        if col in aggregated_df.columns:
-            final_ordered_cols.append(col)
-    for col_group in [value_cols, count_cols, actual_count_cols]:
-        for col in col_group:
-            if col not in final_ordered_cols and col in aggregated_df.columns:
-                final_ordered_cols.append(col)
-
-    for json_col in ['rl_counts_json', 'rl_actual_counts_json', 'rl_values_json']:
-        if json_col in aggregated_df.columns and json_col not in final_ordered_cols:
-            final_ordered_cols.append(json_col)
-
-    remaining_cols = sorted(list(set(aggregated_df.columns) - set(final_ordered_cols)))
-    final_ordered_cols.extend(remaining_cols)
-    final_ordered_cols = [col for col in final_ordered_cols if col in aggregated_df.columns]
-    final_ordered_cols = list(dict.fromkeys(final_ordered_cols))
-
-    aggregated_df_final = aggregated_df[final_ordered_cols].copy()
-    aggregated_df_final.sort_values(by='sim_time_client', inplace=True)
+    aggregated_df_final = aggregated_df[final_cols].sort_values(by='sim_time_client')
 
     output_base_name = f"log_{strategy_name}{suffix_pattern}_average"
-    output_file, counter = os.path.join(output_dir, f"{output_base_name}.csv"), 1
-    while os.path.exists(output_file):
-        output_file = os.path.join(output_dir, f"{output_base_name}_{counter}.csv")
-        counter += 1
-
+    output_file = os.path.join(output_dir, f"{output_base_name}.csv")
     aggregated_df_final.to_csv(output_file, index=False, float_format='%.3f')
     logger.info(f"Aggregated CSV file saved to: {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Aggregates multiple simulation logs for a strategy.")
-    parser.add_argument("strategy_name", type=str, help="Base name of the strategy (e.g., ucb1, d_ucb).")
+    parser.add_argument("strategy_name", type=str, help="Base name of the strategy (e.g., ucb1, d_ucb, no_steering).")
     parser.add_argument("--suffix_pattern", type=str, default="",
                         help="Optional suffix pattern in filenames (e.g., _runA).")
     parser.add_argument("--input_dir", type=str, default=DEFAULT_SIM_DATA_DIR, help=f"Directory of logs. Default: {DEFAULT_SIM_DATA_DIR}")
@@ -302,9 +237,8 @@ if __name__ == "__main__":
     log_level_to_set = logging.DEBUG if args.verbose else logging.INFO
     _formatter_agg = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
     _handler_agg.setFormatter(_formatter_agg)
-    if logger.hasHandlers():
-        logger.handlers.clear()
-    logger.addHandler(_handler_agg)
+    if not logger.handlers:
+        logger.addHandler(_handler_agg)
     logger.setLevel(log_level_to_set)
 
     logger.info(f"Logging level set to {logging.getLevelName(logger.getEffectiveLevel())}.")

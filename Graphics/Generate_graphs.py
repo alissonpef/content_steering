@@ -6,6 +6,8 @@ import json
 import argparse
 import numpy as np
 import logging
+import re 
+
 
 logger = logging.getLogger("generate_graphs")
 
@@ -120,7 +122,8 @@ def generate_plots(csv_file_path: str):
         logger.error(f"CSV file not found: {csv_file_path}")
         return
     csv_filename_with_ext = os.path.basename(csv_file_path)
-    current_img_dir = os.path.join(DEFAULT_IMG_DIR, os.path.splitext(csv_filename_with_ext)[0])
+    csv_filename_no_ext = os.path.splitext(csv_filename_with_ext)[0]
+    current_img_dir = os.path.join(DEFAULT_IMG_DIR, csv_filename_no_ext)
     os.makedirs(current_img_dir, exist_ok=True)
     logger.info(f"Reading data from: {csv_filename_with_ext}")
     try:
@@ -137,10 +140,19 @@ def generate_plots(csv_file_path: str):
     strategy_name_from_df = "N/A"
     if 'rl_strategy' in df.columns and not df['rl_strategy'].dropna().empty:
         strategy_name_from_df = df['rl_strategy'].dropna().iloc[0]
+    else: 
+        match = re.match(r"log_([a-zA-Z0-9_]+)", csv_filename_no_ext)
+        if match:
+            strategy_name_from_df = match.group(1)
+
     strategy_display_name = strategy_name_from_df.replace('_', ' ').title()
     if strategy_name_from_df == "d_ucb": strategy_display_name = "D-UCB"
+    if strategy_name_from_df == "linucb": strategy_display_name = "LinUCB"
 
-    window_size = 10
+    strategy_display_name = strategy_name_from_df.replace('_', ' ').title()
+    if strategy_name_from_df == "d_ucb": strategy_display_name = "D-UCB"
+    if strategy_name_from_df == "linucb": strategy_display_name = "LinUCB"
+
     if 'all_servers_oracle_latency_json' in df.columns:
         dynamic_best_info = df.apply(find_dynamic_best_server_and_latency, axis=1, result_type='expand')
         df[['dynamic_best_server_name', 'dynamic_best_server_latency']] = dynamic_best_info
@@ -151,6 +163,7 @@ def generate_plots(csv_file_path: str):
     fig1, ax1 = plt.subplots(figsize=(12, 6))
     plot_made_g1 = False
     legend1_handles, legend1_labels = [], []
+    window_size = 10
     if 'experienced_latency_ms' in df.columns and 'sim_time_client' in df.columns:
         df_chosen_latency = df.dropna(subset=['sim_time_client', 'experienced_latency_ms'])
         if not df_chosen_latency.empty and len(df_chosen_latency) >= window_size:
@@ -193,127 +206,99 @@ def generate_plots(csv_file_path: str):
             df_plot_decision = df_s_unique.dropna(subset=['decision_int'])
             if not df_plot_decision.empty:
                 line_algo, = ax2.plot(df_plot_decision['sim_time_client'], df_plot_decision['decision_int'],
-                                      drawstyle='steps-post', marker='o', markersize=3, alpha=0.8, color='tab:cyan')
-                if not any(label == "Algorithm's Server Choice" for label in legend2_labels):
-                    legend2_handles.append(line_algo)
-                    legend2_labels.append("Algorithm's Server Choice")
+                                      drawstyle='steps-post', marker='o', markersize=3, alpha=0.8, color='tab:cyan', label="Algorithm's Server Choice")
+                legend2_handles.append(line_algo)
+                legend2_labels.append("Algorithm's Server Choice")
                 plot_made_g2 = True
             if 'dynamic_best_server_name' in df_s_unique.columns:
                 df_s_unique.loc[:, 'dynamic_best_int'] = df_s_unique['dynamic_best_server_name'].map(entity_to_int_map).fillna(-1)
                 df_plot_dynamic_best = df_s_unique[df_s_unique['dynamic_best_int'] != -1].dropna(subset=['sim_time_client'])
                 if not df_plot_dynamic_best.empty:
+                    ax2.scatter(df_plot_dynamic_best['sim_time_client'], df_plot_dynamic_best['dynamic_best_int'],
+                                marker='x', s=50, color=SERVER_COLORS.get("DynamicBest", "tab:red"),
+                                label="Optimal Server Choice", alpha=0.9, zorder=5)
                     line_optimal_proxy, = plt.plot([], [], linestyle='None', marker='x', markersize=7,
-                                                  color=SERVER_COLORS.get("DynamicBest", "tab:red"), label="Optimal Server")
-                    ax2.plot(df_plot_dynamic_best['sim_time_client'], df_plot_dynamic_best['dynamic_best_int'],
-                             linestyle='None', marker='x', markersize=7, alpha=0.7,
-                             color=SERVER_COLORS.get("DynamicBest", "tab:red"))
-                    if not any(label == "Optimal Server" for label in legend2_labels):
+                                                  color=SERVER_COLORS.get("DynamicBest", "tab:red"), label="Optimal Server Choice")
+                    if not any(label == "Optimal Server Choice" for label in legend2_labels):
                         legend2_handles.append(line_optimal_proxy)
-                        legend2_labels.append("Optimal Server")
+                        legend2_labels.append("Optimal Server Choice")
                     plot_made_g2 = True
             if plot_made_g2 and entity_to_int_map and unique_y_entities:
                 ax2.set_yticks(list(entity_to_int_map.values()))
-                ax2.set_yticklabels([SERVER_DISPLAY_NAMES.get(entity, str(entity).replace("_"," ").title()) for entity in unique_y_entities])
+                ytick_labels = [SERVER_DISPLAY_NAMES.get(entity, str(entity).replace("_", " ").title()) for entity in unique_y_entities]
+                ax2.set_yticklabels(ytick_labels)
                 ax2.set_ylim(min(entity_to_int_map.values()) - 0.5, max(entity_to_int_map.values()) + 0.5)
     if plot_made_g2:
         format_plot(ax2, f"Steering Decisions and Optimal Server\nStrategy: {strategy_display_name}",
                     "Simulation Time (s)", "Server Entity", legend_loc='upper right',
                     custom_legend_handles=legend2_handles, custom_legend_labels=legend2_labels)
         plt.setp(ax2.get_yticklabels(), rotation=30, ha="right", rotation_mode="anchor")
-        plt.tight_layout(pad=1.5)
+        plt.tight_layout(pad=1.5, rect=[0, 0, 1, 0.95])
         plt.savefig(os.path.join(current_img_dir, "2_steering_decision_vs_optimal.png"))
     else: logger.info(f"Insufficient data for Plot 2 for {csv_filename_with_ext}.")
     plt.close(fig2)
 
-    fig_rl_values, ax_rl_values = plt.subplots(figsize=(12, 6))
-    plot_made_rl_values = False
-    legend_rl_values_handles, legend_rl_values_labels = [], []
-    y_label_rl_values = "Estimated RL Value"
-
     if 'rl_values_json' in df.columns and not df['rl_values_json'].dropna().empty:
+        fig_rl_values, ax_rl_values = plt.subplots(figsize=(12, 6))
+        plot_made_rl_values = False
+        legend_rl_values_handles, legend_rl_values_labels = [], []
+        y_label_rl_values = "Estimated RL Value"
         df_values_parsed = parse_json_series_to_dataframe(df['rl_values_json'].dropna(), prefix="value_")
         if not df_values_parsed.empty:
             df_values_with_time = pd.concat([df.loc[df_values_parsed.index, 'sim_time_client'], df_values_parsed], axis=1).reset_index(drop=True)
             df_values_unique_time = df_values_with_time.drop_duplicates(subset=['sim_time_client'], keep='last').copy()
-
-            if strategy_name_from_df.lower() == "epsilon_greedy":
-                y_label_rl_values = "Estimated Reward (from 1000/latency)"
-            elif "ucb" in strategy_name_from_df.lower():
-                y_label_rl_values = f"Avg. Estimated Reward ({strategy_display_name})"
-
+            if "ucb" in strategy_name_from_df.lower(): 
+                y_label_rl_values = f"Estimated Reward ({strategy_display_name})"
+            elif strategy_name_from_df.lower() == "epsilon_greedy":
+                y_label_rl_values = "Estimated Average Latency (Punishment)"
             value_cols_plot = sorted([col for col in df_values_unique_time.columns if col.startswith('value_') and any(k_u in col for k_u in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE)])
-
             for col_name in value_cols_plot:
                 s_key_u = col_name.replace('value_', '')
                 s_key_h = s_key_u.replace('_', '-')
                 color = SERVER_COLORS.get(s_key_h, 'grey')
                 label_text = SERVER_DISPLAY_NAMES.get(s_key_h, s_key_u)
                 df_subset = df_values_unique_time.dropna(subset=['sim_time_client', col_name]).copy()
-
-                if strategy_name_from_df.lower() == "epsilon_greedy":
-                    df_subset.loc[:, col_name] = df_subset[col_name].apply(lambda x: 1000.0 / x if isinstance(x, (int,float)) and x > 0 else 0.0)
-
                 if not df_subset.empty:
                     line, = ax_rl_values.plot(df_subset['sim_time_client'], df_subset[col_name], marker='.', linestyle='-', ms=3, alpha=0.7, color=color)
                     if not any(l == label_text for l in legend_rl_values_labels):
                         legend_rl_values_handles.append(line)
                         legend_rl_values_labels.append(label_text)
                     plot_made_rl_values = True
-
             if plot_made_rl_values:
                 format_plot(ax_rl_values, f"RL Algorithm's Estimated Server Values\nStrategy: {strategy_display_name}",
                             "Simulation Time (s)", y_label_rl_values, legend_loc='upper right',
                             custom_legend_handles=legend_rl_values_handles, custom_legend_labels=legend_rl_values_labels)
                 plt.savefig(os.path.join(current_img_dir, "3_rl_estimated_values.png"))
-            else:
-                logger.info(f"No valid 'value_*' columns for Plot 3 for {csv_filename_with_ext}.")
-        else:
-            logger.info(f"DataFrame from 'rl_values_json' empty after parse for Plot 3 for {csv_filename_with_ext}.")
+        plt.close(fig_rl_values)
     else:
-        logger.info(f"Plot 3 not applicable or 'rl_values_json' not found for {csv_filename_with_ext} ({strategy_display_name}).")
-    plt.close(fig_rl_values)
+        logger.info(f"Plot 3 (RL Values) skipped: 'rl_values_json' not found or empty for {strategy_display_name}.")
 
-    fig_rl_counts, ax_rl_counts = plt.subplots(figsize=(12, 6))
-    plot_made_rl_counts = False
-    legend_rl_counts_handles, legend_rl_counts_labels = [], []
+    counts_json_col_to_use = None
     y_label_rl_counts = "Number of Selections (Pulls)"
+    if strategy_name_from_df.lower() == "d_ucb" and 'rl_actual_counts_json' in df.columns and not df['rl_actual_counts_json'].dropna().empty:
+        counts_json_col_to_use = 'rl_actual_counts_json'
+        y_label_rl_counts = "Actual Number of Selections (D-UCB)"
+    elif 'rl_counts_json' in df.columns and not df['rl_counts_json'].dropna().empty:
+        counts_json_col_to_use = 'rl_counts_json'
+        if strategy_name_from_df.lower() == "d_ucb":
+             y_label_rl_counts = "Discounted Selections (D-UCB Fallback)"
 
-    counts_json_col_to_use = 'rl_counts_json'
-    if strategy_name_from_df.lower() == "d_ucb":
-        logger.info(f"Strategy detected as D_UCB for counts plot.")
-        if 'rl_actual_counts_json' in df.columns and not df['rl_actual_counts_json'].dropna().empty:
-            counts_json_col_to_use = 'rl_actual_counts_json'
-            y_label_rl_counts = "Actual Number of Selections (D-UCB)"
-            logger.info(f"D_UCB: Using 'rl_actual_counts_json' for pull counts plot.")
-        else:
-            logger.warning(f"D_UCB: 'rl_actual_counts_json' NOT found or empty. Using 'rl_counts_json' (discounted).")
-            y_label_rl_counts = "Discounted Selections (D-UCB Fallback)"
-    else:
-        logger.info(f"Strategy '{strategy_name_from_df}' is not D_UCB. Using 'rl_counts_json' for counts.")
-
-    logger.info(f"Final column selected for counts: {counts_json_col_to_use}")
-
-    if counts_json_col_to_use in df.columns and not df[counts_json_col_to_use].dropna().empty:
+    if counts_json_col_to_use:
+        fig_rl_counts, ax_rl_counts = plt.subplots(figsize=(12, 6))
+        plot_made_rl_counts = False
+        legend_rl_counts_handles, legend_rl_counts_labels = [], []
         df_counts_parsed = parse_json_series_to_dataframe(df[counts_json_col_to_use].dropna(), prefix="data_")
-
         if not df_counts_parsed.empty:
             df_counts_with_time = pd.concat([df.loc[df_counts_parsed.index, 'sim_time_client'], df_counts_parsed], axis=1).reset_index(drop=True)
             df_counts_unique_time = df_counts_with_time.drop_duplicates(subset=['sim_time_client'], keep='last').copy()
-
-            cols_to_plot_counts = sorted([
-                col for col in df_counts_unique_time.columns
-                if col.startswith('data_') and col.replace('data_', '') in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE
-            ])
-
+            cols_to_plot_counts = sorted([c for c in df_counts_unique_time.columns if c.startswith('data_') and c.replace('data_', '') in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE])
             for col_name_with_prefix in cols_to_plot_counts:
                 server_key_u = col_name_with_prefix.replace('data_', '')
                 server_key_h = server_key_u.replace('_', '-')
                 color = SERVER_COLORS.get(server_key_h, 'grey')
                 label_text = SERVER_DISPLAY_NAMES.get(server_key_h, server_key_u)
-                df_server_counts = df_counts_unique_time[['sim_time_client', col_name_with_prefix]].copy()
-                df_server_counts.dropna(subset=[col_name_with_prefix], inplace=True)
+                df_server_counts = df_counts_unique_time[['sim_time_client', col_name_with_prefix]].copy().dropna(subset=[col_name_with_prefix])
                 if not df_server_counts.empty:
-                    logger.debug(f"Plotting counts for {server_key_h}: X={df_server_counts['sim_time_client'].tolist()} Y={df_server_counts[col_name_with_prefix].tolist()}")
                     line, = ax_rl_counts.plot(df_server_counts['sim_time_client'], df_server_counts[col_name_with_prefix], marker='.', linestyle='-', ms=3, alpha=0.7, color=color)
                     if not any(l == label_text for l in legend_rl_counts_labels):
                         legend_rl_counts_handles.append(line)
@@ -324,24 +309,20 @@ def generate_plots(csv_file_path: str):
                             "Simulation Time (s)", y_label_rl_counts, legend_loc='upper left',
                             custom_legend_handles=legend_rl_counts_handles, custom_legend_labels=legend_rl_counts_labels)
                 plt.savefig(os.path.join(current_img_dir, "4_rl_selection_counts.png"))
-            else:
-                logger.info(f"No valid count columns for Plot 4 for {csv_filename_with_ext}.")
-        else:
-            logger.info(f"DataFrame from '{counts_json_col_to_use}' empty after parse for Plot 4 for {csv_filename_with_ext}.")
+        plt.close(fig_rl_counts)
     else:
-        logger.info(f"Column '{counts_json_col_to_use}' not found for Plot 4 for {csv_filename_with_ext}.")
-    plt.close(fig_rl_counts)
+        logger.info(f"Plot 4 (RL Counts) skipped: No suitable RL counts column found for {strategy_display_name}.")
 
-    fig5, ax5 = plt.subplots(figsize=(12, 6))
-    plot_made_g5 = False
-    legend5_handles, legend5_labels = [], []
     if 'all_servers_oracle_latency_json' in df.columns and not df['all_servers_oracle_latency_json'].dropna().empty:
+        fig5, ax5 = plt.subplots(figsize=(12, 6))
+        plot_made_g5 = False
+        legend5_handles, legend5_labels = [], []
         df_all_lat_parsed = parse_json_series_to_dataframe(df['all_servers_oracle_latency_json'].dropna(), prefix="")
         if not df_all_lat_parsed.empty:
             df_all_lat_with_time = pd.concat([df.loc[df_all_lat_parsed.index, 'sim_time_client'], df_all_lat_parsed], axis=1).reset_index(drop=True)
             df_all_lat_unique_time = df_all_lat_with_time.drop_duplicates(subset=['sim_time_client'], keep='last').copy()
             if not df_all_lat_unique_time.empty and 'sim_time_client' in df_all_lat_unique_time.columns:
-                all_oracle_cols = sorted([col for col in df_all_lat_unique_time.columns if col != 'sim_time_client' and col in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE])
+                all_oracle_cols = sorted([c for c in df_all_lat_unique_time.columns if c != 'sim_time_client' and c in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE])
                 for server_col_u in all_oracle_cols:
                     s_key_h = server_col_u.replace('_', '-')
                     color = SERVER_COLORS.get(s_key_h, 'grey')
@@ -358,19 +339,17 @@ def generate_plots(csv_file_path: str):
                                 "Simulation Time (s)", "Simulated Latency (ms)", legend_loc='upper right',
                                 custom_legend_handles=legend5_handles, custom_legend_labels=legend5_labels)
                     plt.savefig(os.path.join(current_img_dir, "5_all_servers_oracle_latency.png"))
-                else: logger.info(f"No valid columns for Plot 5 for {csv_filename_with_ext}.")
-            else: logger.info(f"Empty DataFrame or missing sim_time_client for Plot 5 for {csv_filename_with_ext}.")
-        else: logger.info(f"DataFrame 'all_servers_oracle_latency_json' empty after parse for Plot 5 for {csv_filename_with_ext}.")
-    else: logger.info(f"Column 'all_servers_oracle_latency_json' not found for Plot 5 for {csv_filename_with_ext}.")
-    plt.close(fig5)
+        plt.close(fig5)
+    else:
+        logger.info(f"Plot 5 (Latency Landscape) skipped: 'all_servers_oracle_latency_json' not found or empty.")
 
-    logger.info(f"Graph generation for '{os.path.splitext(csv_filename_with_ext)[0]}' complete. Saved in: {current_img_dir}\n")
+    logger.info(f"Graph generation for '{csv_filename_no_ext}' complete. Saved in: {current_img_dir}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate graphs from Content Steering simulation CSV logs.")
     parser.add_argument("csv_argument", type=str, nargs='?', default=None,
                         help="Filename/path to CSV log. Searched in standard dirs if not absolute.")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.") # Kept for consistency
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
     args = parser.parse_args()
 
     _handler_main = logging.StreamHandler()

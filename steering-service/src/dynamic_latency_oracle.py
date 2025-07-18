@@ -4,7 +4,7 @@ import threading
 import numpy as np
 import logging
 import math
-import json 
+import json
 
 logger = logging.getLogger("LatencyOracle")
 
@@ -131,6 +131,43 @@ class DynamicLatencyOracle:
                 calculated_final_latency = simulated_latency_before_modifier * final_modifier_to_apply
                 self.server_latencies[server_name] = calculated_final_latency
                 logger.debug(f"Oracle: Latency {server_name}: {calculated_final_latency:.2f}ms (BaseEff: {effective_base_latency:.2f}, Mod: {final_modifier_to_apply:.2f})")
+
+    def get_context_and_final_latency(self, server_name: str) -> tuple[np.ndarray, float]:
+        with self.lock:
+            if server_name not in self.server_latencies:
+                self._initialize_server_states()
+            
+            base_latency_config = self.server_base_latencies_config.get(server_name, 30)
+            current_modifier_factor, current_expiry_time = self.server_event_modifiers.get(server_name, (1.0, 0))
+            
+            final_modifier_to_apply = current_modifier_factor
+            if current_expiry_time != 0 and time.time() >= current_expiry_time:
+                final_modifier_to_apply = 1.0
+                if self.server_event_modifiers.get(server_name) != (1.0, 0):
+                    self.server_event_modifiers[server_name] = (1.0, 0)
+            
+            feature_distance_km = 0.0
+            if self.use_distance_penalty and self.client_latitude is not None and self.client_longitude is not None:
+                server_coords = self.server_geo_coords.get(server_name)
+                if server_coords and server_coords.get('lat') is not None and server_coords.get('lon') is not None:
+                    feature_distance_km = calculate_haversine_distance(
+                        self.client_latitude, self.client_longitude,
+                        server_coords['lat'], server_coords['lon']
+                    )
+
+            noise = np.random.normal(loc=0, scale=max(1, base_latency_config) * self.noise_std_dev_factor)
+            feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * final_modifier_to_apply
+            
+            context_vector = np.array([
+                1.0,                
+                feature_distance_km,  
+                feature_server_load   
+            ])
+            
+            distance_penalty = feature_distance_km * self.ms_per_km_factor
+            final_latency = feature_server_load + distance_penalty
+            
+            return context_vector, final_latency
 
     def get_current_latency(self, server_name: str) -> float:
         with self.lock:

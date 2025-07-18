@@ -5,6 +5,7 @@ import json
 import logging
 import argparse
 import math
+import re
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -12,7 +13,7 @@ from flask_cors import CORS
 from dash_parser import DashParser
 from monitor import ContainerMonitor
 from selector import (EpsilonGreedy, RandomSelector, NoSteeringSelector,
-                      UCB1Selector, OracleBestChoiceSelector, D_UCB)
+                      UCB1Selector, OracleBestChoiceSelector, D_UCB, LinUCBSelector)
 from dynamic_latency_oracle import DynamicLatencyOracle
 
 STEERING_PORT = 30500
@@ -36,6 +37,8 @@ active_log_filename = None
 last_client_coords = {'lat': None, 'lon': None, 'time': 0}
 MOVEMENT_THRESHOLD_KM = 0.05
 CLIENT_COORDS_UPDATE_INTERVAL_SEC = 0.9
+
+last_decision_contexts = {}
 
 app_logger = logging.getLogger("SteeringApp")
 oracle_logger = logging.getLogger("LatencyOracle")
@@ -133,14 +136,28 @@ class Main:
     def _register_routes(self):
         @self.app.route("/<path:name>", methods=["GET", "POST"])
         def do_remote_steering(name: str):
-            global last_steering_main_server_decision
+            global last_steering_main_server_decision, last_decision_contexts
             if not self._initialize_selector_if_needed():
                 return jsonify({"error": "Service not ready (selector initialization failed)."}), 503
-            ordered_nodes = selector_instance.select_arm()
+
+            ordered_nodes = []
+            if isinstance(selector_instance, LinUCBSelector):
+                node_names = [info[0] for info in monitor.getNodes() if info and info[0]]
+                contexts_for_decision = {}
+                for node_name in node_names:
+                    context, _ = latency_oracle.get_context_and_final_latency(node_name)
+                    contexts_for_decision[node_name] = context
+                
+                last_decision_contexts = contexts_for_decision
+                ordered_nodes = selector_instance.select_arm(contexts=contexts_for_decision)
+            else:
+                ordered_nodes = selector_instance.select_arm()
+
             last_steering_main_server_decision = ordered_nodes[0] if ordered_nodes else "N/A_NO_NODES_FROM_SELECTION"
             if not ordered_nodes:
-                app_logger.error("No server selected by RL.")
+                app_logger.error("No server selected by strategy.")
                 return jsonify({"error": "No selectable server"}), 503
+            
             nodes_p = [(n, n) for n in ordered_nodes]
             uri_scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             service_host = request.headers.get('X-Forwarded-Host', request.host)
@@ -228,8 +245,21 @@ class Main:
                         if srv_u_feedback not in selector_instance.nodes:
                             app_logger.error(f"Server {srv_u_feedback} still not recognized. RL update not performed.")
                             return "Server not recognized, RL not updated.", 400
+                    
+                    feedback_value = float(oracle_lat_for_feedback) 
+                    if isinstance(selector_instance, (UCB1Selector, D_UCB, LinUCBSelector)):
+                        reward = 1000.0 / float(oracle_lat_for_feedback) if float(oracle_lat_for_feedback) > 0 else 0.0
+                        feedback_value = reward
 
-                    selector_instance.update(srv_u_feedback, float(oracle_lat_for_feedback))
+                    update_kwargs = {}
+                    if isinstance(selector_instance, LinUCBSelector):
+                        context_for_update = last_decision_contexts.get(srv_u_feedback)
+                        if context_for_update is not None:
+                            update_kwargs['context'] = context_for_update
+                        else:
+                            app_logger.warning(f"Contexto para {srv_u_feedback} não encontrado no último snapshot de decisão. Update do LinUCB pode ser impreciso.")
+
+                    selector_instance.update(srv_u_feedback, feedback_value, **update_kwargs)
                     return "RL updated and logged", 200
                 return "Data logged (no RL update)", 200
             elif lat is not None and lon is not None:
@@ -282,7 +312,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Content Steering Service with RL.")
     parser.add_argument("--strategy", type=str, default="epsilon_greedy",
                         choices=["epsilon_greedy", "no_steering", "random", "ucb1",
-                                 "d_ucb", "oracle_best_choice"],
+                                 "d_ucb", "oracle_best_choice", "linucb"],
                         help="Steering strategy.")
     parser.add_argument("--log_suffix", type=str, default="",
                         help="Optional suffix for CSV log filename (e.g., _testScenarioX).")
@@ -320,6 +350,8 @@ if __name__ == "__main__":
         selector_instance = RandomSelector(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "ucb1":
         selector_instance = UCB1Selector(monitor=monitor, latency_oracle=latency_oracle)
+    elif args.strategy == "linucb":
+        selector_instance = LinUCBSelector(d=3, alpha=1.0, monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "d_ucb":
         selector_instance = D_UCB(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "oracle_best_choice":
