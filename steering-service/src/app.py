@@ -5,7 +5,6 @@ import json
 import logging
 import argparse
 import math
-import re
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -351,7 +350,7 @@ if __name__ == "__main__":
     elif args.strategy == "ucb1":
         selector_instance = UCB1Selector(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "linucb":
-        selector_instance = LinUCBSelector(d=3, alpha=1.0, monitor=monitor, latency_oracle=latency_oracle)
+        selector_instance = LinUCBSelector(d=5, alpha=1.0, monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "d_ucb":
         selector_instance = D_UCB(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "oracle_best_choice":

@@ -4,7 +4,7 @@ import threading
 import numpy as np
 import logging
 import math
-import json
+import json 
 
 logger = logging.getLogger("LatencyOracle")
 
@@ -30,10 +30,22 @@ class DynamicLatencyOracle:
     def __init__(self, monitor, update_interval_seconds: int = 2):
         self.monitor = monitor
         self.server_latencies = {}
+        # Configurações base para latência
         self.server_base_latencies_config = {
             "video-streaming-cache-1": 30,
             "video-streaming-cache-2": 25,
             "video-streaming-cache-3": 125
+        }
+        # Novas configurações base para jitter e perda de pacotes
+        self.server_base_jitter_config = {
+            "video-streaming-cache-1": 5,   # ms
+            "video-streaming-cache-2": 10,  # ms
+            "video-streaming-cache-3": 20   # ms
+        }
+        self.server_base_packet_loss_config = {
+            "video-streaming-cache-1": 0.001, # 0.1%
+            "video-streaming-cache-2": 0.005, # 0.5%
+            "video-streaming-cache-3": 0.01   # 1.0%
         }
         self.server_geo_coords = {}
         self.client_latitude = DynamicLatencyOracle.DEFAULT_INITIAL_CLIENT_LAT
@@ -99,80 +111,74 @@ class DynamicLatencyOracle:
 
     def _update_latencies(self):
         self._initialize_server_states()
-
         with self.lock:
-            current_time_server = time.time()
-            can_calculate_distance = self.use_distance_penalty and \
-                                     self.client_latitude is not None and \
-                                     self.client_longitude is not None
-
             for server_name in list(self.server_latencies.keys()):
-                base_latency_config = self.server_base_latencies_config.get(server_name, 30)
-
-                distance_penalty = 0.0
-                if can_calculate_distance:
-                    server_coords = self.server_geo_coords.get(server_name)
-                    if server_coords and server_coords.get('lat') is not None and server_coords.get('lon') is not None:
-                        distance_km = calculate_haversine_distance(
-                            self.client_latitude, self.client_longitude,
-                            server_coords['lat'], server_coords['lon']
-                        )
-                        distance_penalty = distance_km * self.ms_per_km_factor
-                effective_base_latency = base_latency_config + distance_penalty
-                current_modifier_factor, current_expiry_time = self.server_event_modifiers.get(server_name, (1.0, 0))
-                final_modifier_to_apply = current_modifier_factor
-                if current_expiry_time != 0 and current_time_server >= current_expiry_time:
-                    final_modifier_to_apply = 1.0
-                    if self.server_event_modifiers.get(server_name) != (1.0,0):
-                        logger.info(f"Oracle: Modifier for {server_name} (factor {current_modifier_factor}) expired. Resetting.")
-                        self.server_event_modifiers[server_name] = (1.0, 0)
-                noise = np.random.normal(loc=0, scale=max(1, effective_base_latency) * self.noise_std_dev_factor)
-                simulated_latency_before_modifier = max(self.min_simulated_latency, effective_base_latency + noise)
-                calculated_final_latency = simulated_latency_before_modifier * final_modifier_to_apply
-                self.server_latencies[server_name] = calculated_final_latency
-                logger.debug(f"Oracle: Latency {server_name}: {calculated_final_latency:.2f}ms (BaseEff: {effective_base_latency:.2f}, Mod: {final_modifier_to_apply:.2f})")
+                _, final_latency = self.get_context_and_final_latency(server_name)
+                self.server_latencies[server_name] = final_latency
+                logger.debug(f"Oracle: Updated Latency {server_name}: {final_latency:.2f}ms")
 
     def get_context_and_final_latency(self, server_name: str) -> tuple[np.ndarray, float]:
-        with self.lock:
-            if server_name not in self.server_latencies:
-                self._initialize_server_states()
-            
-            base_latency_config = self.server_base_latencies_config.get(server_name, 30)
-            current_modifier_factor, current_expiry_time = self.server_event_modifiers.get(server_name, (1.0, 0))
-            
-            final_modifier_to_apply = current_modifier_factor
-            if current_expiry_time != 0 and time.time() >= current_expiry_time:
-                final_modifier_to_apply = 1.0
-                if self.server_event_modifiers.get(server_name) != (1.0, 0):
-                    self.server_event_modifiers[server_name] = (1.0, 0)
-            
-            feature_distance_km = 0.0
-            if self.use_distance_penalty and self.client_latitude is not None and self.client_longitude is not None:
-                server_coords = self.server_geo_coords.get(server_name)
-                if server_coords and server_coords.get('lat') is not None and server_coords.get('lon') is not None:
-                    feature_distance_km = calculate_haversine_distance(
-                        self.client_latitude, self.client_longitude,
-                        server_coords['lat'], server_coords['lon']
-                    )
+        """
+        Calcula e retorna o vetor de contexto para LinUCB e a latência final simulada.
+        """
+        # 1. Obter os componentes base da latência
+        if server_name not in self.server_latencies:
+            self._initialize_server_states()
+        
+        base_latency_config = self.server_base_latencies_config.get(server_name, 30)
+        current_modifier_factor, current_expiry_time = self.server_event_modifiers.get(server_name, (1.0, 0))
+        
+        final_modifier_to_apply = current_modifier_factor
+        if current_expiry_time != 0 and time.time() >= current_expiry_time:
+            final_modifier_to_apply = 1.0
+            if self.server_event_modifiers.get(server_name) != (1.0, 0):
+                self.server_event_modifiers[server_name] = (1.0, 0)
+        
+        # 2. Construir as features para o vetor de contexto
+        # Feature 1: Distância Geográfica
+        feature_distance_km = 0.0
+        if self.use_distance_penalty and self.client_latitude is not None and self.client_longitude is not None:
+            server_coords = self.server_geo_coords.get(server_name)
+            if server_coords and server_coords.get('lat') is not None and server_coords.get('lon') is not None:
+                feature_distance_km = calculate_haversine_distance(
+                    self.client_latitude, self.client_longitude,
+                    server_coords['lat'], server_coords['lon']
+                )
 
-            noise = np.random.normal(loc=0, scale=max(1, base_latency_config) * self.noise_std_dev_factor)
-            feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * final_modifier_to_apply
-            
-            context_vector = np.array([
-                1.0,                
-                feature_distance_km,  
-                feature_server_load   
-            ])
-            
-            distance_penalty = feature_distance_km * self.ms_per_km_factor
-            final_latency = feature_server_load + distance_penalty
-            
-            return context_vector, final_latency
+        # Feature 2: "Carga" do Servidor (latência base + ruído + spam)
+        noise = np.random.normal(loc=0, scale=max(1, base_latency_config) * self.noise_std_dev_factor)
+        feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * final_modifier_to_apply
+        
+        # Feature 3: Jitter Simulado
+        base_jitter = self.server_base_jitter_config.get(server_name, 10)
+        jitter_multiplier = 1.0 + (final_modifier_to_apply - 1.0) * 1.5 # Spam aumenta o jitter
+        feature_jitter = np.random.uniform(base_jitter * 0.5, base_jitter * 1.5) * jitter_multiplier
+
+        # Feature 4: Perda de Pacotes Simulada
+        base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
+        feature_packet_loss = min(1.0, base_loss * final_modifier_to_apply) # Spam aumenta a perda
+        
+        # Vetor de contexto ENRIQUECIDO (agora com 5 dimensões!)
+        context_vector = np.array([
+            1.0,
+            feature_distance_km,
+            feature_server_load,
+            feature_jitter,
+            feature_packet_loss 
+        ])
+
+        # 3. Calcular a Latência Final (ground truth)
+        distance_penalty = feature_distance_km * self.ms_per_km_factor
+        jitter_effect_on_latency = feature_jitter * np.random.choice([-1, 1]) # Variação aleatória
+        packet_loss_penalty = 500 if np.random.rand() < feature_packet_loss else 0 # Simula retransmissão
+        
+        final_latency = feature_server_load + distance_penalty + jitter_effect_on_latency + packet_loss_penalty
+        
+        return context_vector, final_latency
+
 
     def get_current_latency(self, server_name: str) -> float:
         with self.lock:
-            if server_name not in self.server_latencies:
-                self._initialize_server_states()
             latency = self.server_latencies.get(server_name)
             if latency is None:
                 logger.warning(f"Oracle: Latency not found for {server_name}. Returning random value.")
@@ -233,7 +239,7 @@ class DynamicLatencyOracle:
         if self.thread and self.thread.is_alive():
             logger.warning("Oracle: Update thread did not terminate in the expected time.")
         self.thread = None
-
+        
 if __name__ == '__main__':
     _formatter_standalone = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     _handler_standalone = logging.StreamHandler()
