@@ -1,9 +1,11 @@
+### README.md Atualizado
+
 # Content Steering with Reinforcement Learning: VM Simulation
 
 **See it in action!** Watch a video demonstrating the project's functionality:
 [▶️ Watch the Demo Video](https://youtu.be/3l2sZNRFYSc)
 
-This project demonstrates the application of Content Steering, using the DASH protocol and Reinforcement Learning (including Epsilon-Greedy and D-UCB), to optimize cache server selection in a simulated video streaming environment. The testing and simulation environment is configured for execution within the provided VirtualBox VM.
+This project demonstrates the application of Content Steering, using the DASH protocol and Reinforcement Learning (including Epsilon-Greedy, D-UCB, and the contextual bandit **LinUCB**), to optimize cache server selection in a simulated video streaming environment. The testing and simulation environment is configured for execution within the provided VirtualBox VM.
 
 ## Virtual Machine (VM) Environment
 
@@ -91,6 +93,11 @@ Follow these instructions **inside the VirtualBox VM**, in the updated project r
         Still in the project root directory (`content-steering/`).
         Choose **one** of the following commands to start the service:
 
+    * **LinUCB (Contextual Bandit):**
+    ```bash
+        python3 steering-service/src/app.py --strategy linucb
+    ```
+
     * **D-UCB (Dynamic UCB):**
     ```bash
         python3 steering-service/src/app.py --strategy d_ucb
@@ -167,6 +174,7 @@ Use `aggregate_logs.py` to combine multiple runs of a strategy into a single "av
 
 *   **To aggregate logs for each strategy (run from `Graphics/` directory):**
     ```bash
+    python3 aggregate_logs.py linucb
     python3 aggregate_logs.py d_ucb
     python3 aggregate_logs.py ucb1
     python3 aggregate_logs.py epsilon_greedy
@@ -185,6 +193,9 @@ Use `Generate_aggregated_graphs.py` to visualize the average behavior (as time s
 
 *   **To process a specific aggregated log file (examples run from `Graphics/` directory):**
     ```bash
+    # Example for LinUCB:
+    python3 Generate_aggregated_graphs.py Logs/Average/log_linucb_average.csv
+
     # Example for D-UCB:
     python3 Generate_aggregated_graphs.py Logs/Average/log_d_ucb_average.csv
     
