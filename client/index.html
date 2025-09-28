@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Content Steering - Simulation Interface</title>
+    <script src="./assets/js/dash.all.debug.js.baixados"></script>
+    <link href="./assets/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="./assets/css/style.css" rel="stylesheet" />
+    <style>
+      video { width: 100%; max-width: 640px; height: auto; background-color: black; }
+      figure.cdn-selection { margin: 0 10px 0 0; display: inline-block; vertical-align: top;}
+      img.cdn-selection { width: 50px; }
+      .figure-caption { text-align: center; font-size: 0.75em; }
+      #cdn-selection-container { margin: 5px 0 15px 0; min-height: 70px;}
+      .table td, .table th { font-size: 0.85em; padding: 0.4rem; }
+      pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8em; max-height: 100px; overflow-y: auto; }
+      .simulation-controls label { margin-right: 5px; }
+      .simulation-controls input, .simulation-controls select { margin-bottom: 10px; }
+      .simulation-controls .form-select, .simulation-controls .form-control-sm { margin-right: 5px;}
+    </style>
+</head>
+<body>
+    <main>
+      <div class="container py-4">
+        <header class="pb-3 mb-4 border-bottom">
+          <img src="./assets/img/dashjs-logo.png" width="180" alt="DASH-IF Logo"/>
+          <h4 style="display: inline-block; margin-left: 20px; vertical-align: middle;">Simulation Interface (CSV Data Focus)</h4>
+        </header>
+
+        <div class="row mt-2 mb-3 p-3 border rounded-3 simulation-controls">
+            <h5>Simulation Setup</h5>
+            <div class="row mb-2">
+                <div class="col-md-4">
+                    <label for="simDuration">Total Duration (s):</label>
+                    <input type="number" id="simDuration" value="180" class="form-control form-control-sm d-inline-block" style="width: 80px;">
+                </div>
+                <div class="col-md-8">
+                    <label for="initialSimLat">Initial Lat:</label>
+                    <input type="number" step="any" id="initialSimLat" value="-23.0" class="form-control form-control-sm d-inline-block" style="width: 90px;">
+                    <label for="initialSimLon" class="ms-2">Initial Lon:</label>
+                    <input type="number" step="any" id="initialSimLon" value="-47.0" class="form-control form-control-sm d-inline-block" style="width: 90px;">
+                </div>
+            </div>
+            <div class="row mb-2 align-items-center">
+                <div class="col-md-6">
+                    <label for="simMovementTarget">Movement:</label>
+                    <select id="simMovementTarget" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                        <option value="none">Stay Still</option>
+                    </select>
+                    Start @ <input type="number" id="simMovementStartTime" value="45" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Movement: Start after X seconds">s
+                    Duration <input type="number" id="simMovementDuration" value="60" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Movement: Time in seconds to reach target">s
+                </div>
+                <div class="col-md-6">
+                    <label for="simSpamTarget_1">Spam Cache 1:</label>
+                    <select id="simSpamTarget_1" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                        <option value="none">No Spam</option>
+                    </select>
+                    @ <input type="number" id="simSpamStartTime_1" value="45" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Spam 1: Start after X seconds">s
+                    for <input type="number" id="simSpamDuration_1" value="135" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Spam 1: Duration in seconds">s
+                </div>
+            </div>
+            <div class="row mb-3 align-items-center">
+                 <div class="col-md-6">
+                 </div>
+                <div class="col-md-6">
+                    <label for="simSpamTarget_2">Spam Cache 2:</label>
+                    <select id="simSpamTarget_2" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                        <option value="none">No Spam</option>
+                    </select>
+                    @ <input type="number" id="simSpamStartTime_2" value="105" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Spam 2: Start after X seconds">s
+                    for <input type="number" id="simSpamDuration_2" value="75" class="form-control form-control-sm d-inline-block" style="width: 60px;" title="Spam 2: Duration in seconds">s
+                </div>
+            </div>
+            <div class="col-md-12 mt-1">
+                <button type="button" id="button_StartControlledSim" class="btn btn-success btn-sm me-2" disabled>Start Simulation</button>
+                <button type="button" id="button_StopSim" class="btn btn-danger btn-sm me-2" disabled>Stop Simulation</button>
+                <button type="button" id="button_ResetSimUI" class="btn btn-warning btn-sm">Reset UI & Sim State</button>
+            </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-7">
+            <div class="input-group mb-2">
+              <input type="text" id="manifest" class="form-control form-control-sm" placeholder="MPD URL" value="https://video-streaming-cache-1/Eldorado/4sec/avc/manifest.mpd"/>
+              <button type="button" id="load-button" class="btn btn-primary btn-sm">Load MPD</button>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" value="" id="autoStartCheckbox">
+                <label class="form-check-label" for="autoStartCheckbox" style="font-size: 0.9em;">
+                    Auto-start simulation on MPD load
+                </label>
+            </div>
+            <video controls="true" muted="true" preload="metadata"></video>
+             <div class="mt-2">
+                Sim Time: <span id="simCurrentTimeDisplay">0</span>s <br>
+                Client Pos: Lat <input type="text" id="current-latitude" class="form-control-sm" style="width:90px;" readonly/>,
+                Lon <input type="text" id="current-longitude" class="form-control-sm" style="width:90px;" readonly /> <br>
+                Movement: <span id="simMovementStatus">Inactive</span> <br>
+                Spam 1: <span id="simSpamStatus_1">Inactive</span> | Spam 2: <span id="simSpamStatus_2">Inactive</span>
+            </div>
+          </div>
+          <div class="col-md-5">
+            <div class="p-2 border rounded-3" style="max-height: 450px; overflow-y: auto;">
+              <h6>CDN Selection (Active for Segments)</h6>
+              <div id="cdn-selection-container"></div>
+              <h6 style="margin-top: 10px;">Steering Decision (Priority)</h6>
+              <div id="steering-decision-display" style="font-size:0.8em; padding:5px; background-color:#f8f9fa; border-radius:3px;">N/A</div>
+               <h6 style="margin-top: 10px;">Steering Service Raw Data</h6>
+              <div class="table-responsive">
+                <table class="table table-sm">
+                   <tbody>
+                    <tr><td>Timestamp</td><td id="steering-request-timestamp">N/A</td></tr>
+                    <tr><td>Req URL</td><td><span id="steering-request-url" style="word-break: break-all;">N/A</span></td></tr>
+                    <tr><td>Clones</td><td><pre><span id="steering-pathway-cloning">N/A</span></pre></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="pt-3 mt-4 text-muted border-top">Simulation Interface (CSV Data Focus)</footer>
+      </div>
+    </main>
+
+    <script>
+        let player;
+        let currentSegmentServiceLocation = { audio: null, video: null };
+        let cdnIconDomElements = {};
+        const CACHE_COORDS = {
+            "video-streaming-cache-1": { lat: -23.0, lon: -47.0, label: "Cache 1 (BR)" },
+            "video-streaming-cache-2": { lat: -33.0, lon: -71.0, label: "Cache 2 (CL)" },
+            "video-streaming-cache-3": { lat:  5.0,  lon: -74.0, label: "Cache 3 (CO)" }
+        };
+
+        let simTimer = null;
+        let simElapsedTime = 0;
+
+        let simMovementActive = false;
+        let simIntervalID_movement = null;
+        let movementStarted = false;
+
+        let simSpamActive_1 = false, simSpamActive_2 = false;
+        let simSpamEventSent_1 = false;
+        let simSpamEventSent_2 = false;
+
+        let simCurrentLat, simCurrentLon;
+        let isSimulationRunning = false;
+        let manifestSuccessfullyLoaded = false;
+
+        let onManifestLoadedCallback = null;
+        let onManifestErrorCallback = null;
+        let onStreamInitForPlay = null;
+        let onStreamInitForAutomaticPlay = null;
+
+        let fragmentLoadStarts = {};
+
+        function stopInterval(intervalId) {
+            if (intervalId != null) clearInterval(intervalId);
+        }
+
+        function setupPlayer() {
+            const videoElement = document.querySelector("video");
+            if (player) {
+                if (onManifestLoadedCallback) player.off(dashjs.MediaPlayer.events.MANIFEST_LOADED, onManifestLoadedCallback);
+                if (onManifestErrorCallback) player.off(dashjs.MediaPlayer.events.ERROR, onManifestErrorCallback);
+                if (onStreamInitForPlay) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForPlay);
+                if (onStreamInitForAutomaticPlay) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForAutomaticPlay);
+                player.reset();
+            }
+            player = dashjs.MediaPlayer().create();
+            player.initialize(videoElement, null, false);
+            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_STARTED, _onFragmentLoadingStarted);
+            player.on(dashjs.MediaPlayer.events.FRAGMENT_LOADING_COMPLETED, _onFragmentLoadingCompleted);
+            player.on(dashjs.MediaPlayer.events.CONTENT_STEERING_REQUEST_COMPLETED, _onContentSteeringRequestCompleted);
+            player.on(dashjs.MediaPlayer.events.ERROR, (e) => {
+                // console.error("Player Error (Global Listener):", e.error ? (e.error.message || e.error) : e);
+                if (e.error && e.error.code &&
+                    (e.error.code === dashjs.MediaPlayer.errors.MANIFEST_LOADER_PARSING_FAILURE_ERROR_CODE ||
+                     e.error.code === dashjs.MediaPlayer.errors.MANIFEST_LOADER_LOADING_FAILURE_ERROR_CODE ||
+                     e.error.code === dashjs.MediaPlayer.errors.DOWNLOAD_ERROR_ID_MANIFEST)
+                ) {
+                     manifestSuccessfullyLoaded = false;
+                     document.getElementById("button_StartControlledSim").disabled = true;
+                }
+            });
+        }
+
+        function init() {
+            setupPlayer();
+            document.getElementById("load-button").addEventListener("click", _load);
+            document.getElementById("button_StartControlledSim").addEventListener("click", startControlledSimulation);
+            document.getElementById("button_StopSim").addEventListener("click", stopCurrentSimulation);
+            document.getElementById("button_ResetSimUI").addEventListener("click", resetSimulationUIAndState);
+
+            populateSelect("simMovementTarget", "Stay Still");
+            populateSelect("simSpamTarget_1", "No Spam");
+            populateSelect("simSpamTarget_2", "No Spam");
+
+            const cdnContainer = document.getElementById("cdn-selection-container");
+            cdnContainer.innerHTML = ''; cdnIconDomElements = {};
+            for (const cacheName in CACHE_COORDS) {
+                _createIcon(cdnContainer, cacheName, cdnIconDomElements, "cdn");
+            }
+            _resetUIOnly();
+            document.getElementById("button_StartControlledSim").disabled = true;
+            document.getElementById("button_StopSim").disabled = true;
+        }
+
+        function populateSelect(selectId, noneOptionText) {
+            const selectElement = document.getElementById(selectId);
+            selectElement.innerHTML = '';
+            if (noneOptionText) {
+                const noneOpt = document.createElement("option"); noneOpt.value = "none";
+                noneOpt.textContent = noneOptionText; selectElement.appendChild(noneOpt);
+            }
+            for (const cacheName in CACHE_COORDS) {
+                const option = document.createElement("option"); option.value = cacheName;
+                option.textContent = CACHE_COORDS[cacheName].label; selectElement.appendChild(option);
+            }
+        }
+
+        function stopCurrentSimulation(pausePlayerAndSeek = true) {
+            isSimulationRunning = false;
+            if (simTimer) { clearInterval(simTimer); simTimer = null; }
+
+            stopInterval(simIntervalID_movement); simIntervalID_movement = null;
+
+            simMovementActive = false;
+            movementStarted = false;
+            simSpamActive_1 = false; simSpamActive_2 = false;
+
+            if (pausePlayerAndSeek && player && manifestSuccessfullyLoaded) {
+                if (player.isReady() && !player.isPaused()) {
+                    player.pause();
+                }
+                if (player.isReady()){
+                    player.seek(0);
+                }
+            }
+            document.getElementById("button_StartControlledSim").disabled = !manifestSuccessfullyLoaded;
+            document.getElementById("button_StopSim").disabled = true;
+            document.getElementById("simMovementStatus").textContent = "Inactive";
+            document.getElementById("simSpamStatus_1").textContent = "Inactive";
+            document.getElementById("simSpamStatus_2").textContent = "Inactive";
+            // console.log("[SIM_STOP] Simulation stopped.");
+        }
+
+        function _resetUIOnly() {
+            simElapsedTime = 0;
+            document.getElementById("simCurrentTimeDisplay").textContent = "0";
+            const initialLatVal = parseFloat(document.getElementById("initialSimLat").value);
+            const initialLonVal = parseFloat(document.getElementById("initialSimLon").value);
+            simCurrentLat = isNaN(initialLatVal) ? -23.0 : initialLatVal;
+            simCurrentLon = isNaN(initialLonVal) ? -47.0 : initialLonVal;
+            document.getElementById("current-latitude").value = simCurrentLat.toFixed(5);
+            document.getElementById("current-longitude").value = simCurrentLon.toFixed(5);
+            document.getElementById("steering-decision-display").textContent = "N/A";
+            document.getElementById("steering-request-timestamp").textContent = "N/A";
+            document.getElementById("steering-request-url").textContent = "N/A";
+            document.getElementById("steering-pathway-cloning").textContent = "N/A";
+            currentSegmentServiceLocation = { audio: null, video: null };
+            _updateActiveServerIcons();
+            fragmentLoadStarts = {};
+            document.getElementById("simMovementStatus").textContent = "Inactive";
+            document.getElementById("simSpamStatus_1").textContent = "Inactive";
+            document.getElementById("simSpamStatus_2").textContent = "Inactive";
+            movementStarted = false;
+            simSpamEventSent_1 = false;
+            simSpamEventSent_2 = false;
+         }
+
+        function resetSimulationUIAndState() {
+            stopCurrentSimulation(true);
+            _resetUIOnly();
+            document.getElementById("button_StartControlledSim").disabled = true;
+            // console.log("[SIM_RESET] Simulation UI and state reset.");
+        }
+
+        function startControlledSimulation() {
+            if (!manifestSuccessfullyLoaded) {
+                alert("Manifest not loaded. Please load an MPD first.");
+                return;
+            }
+            if (isSimulationRunning) {
+                return;
+            }
+            // console.log("[SIM_START] Starting controlled simulation...");
+            simElapsedTime = 0;
+            simMovementActive = false; movementStarted = false;
+            simSpamActive_1 = false; simSpamActive_2 = false;
+            simSpamEventSent_1 = false;
+            simSpamEventSent_2 = false;
+            stopInterval(simIntervalID_movement); simIntervalID_movement = null;
+            if (simTimer) { clearInterval(simTimer); simTimer = null; }
+            document.getElementById("simCurrentTimeDisplay").textContent = "0";
+            isSimulationRunning = true;
+            fragmentLoadStarts = {};
+
+            function attemptPlayAfterStreamReady() {
+                 if (player.getActiveStream() && player.isReady() && manifestSuccessfullyLoaded) {
+                    player.seek(0);
+                    player.play();
+                }
+            }
+
+            if (player.getActiveStream() && player.isReady()) {
+                attemptPlayAfterStreamReady();
+            } else if (player.isReady()) {
+                if (onStreamInitForPlay && player) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForPlay);
+                onStreamInitForPlay = function() {
+                    if (!isSimulationRunning) return;
+                    attemptPlayAfterStreamReady();
+                    if (player) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForPlay);
+                };
+                player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForPlay, null, { once: true });
+            } else {
+                // console.error("[SIM_START_ERR] Player not ready to start simulation.");
+                isSimulationRunning = false;
+                return;
+            }
+            document.getElementById("button_StartControlledSim").disabled = true;
+            document.getElementById("button_StopSim").disabled = false;
+
+            const duration = parseInt(document.getElementById("simDuration").value) || 180;
+            const movementTarget = document.getElementById("simMovementTarget").value;
+            const movementStartTime = parseInt(document.getElementById("simMovementStartTime").value) || 60;
+            const desiredMovementDuration = parseInt(document.getElementById("simMovementDuration").value) || 60;
+            const spamTarget_1 = document.getElementById("simSpamTarget_1").value;
+            const spamStartTime_1 = parseInt(document.getElementById("simSpamStartTime_1").value) || 60;
+            const spamDuration_1_val = parseInt(document.getElementById("simSpamDuration_1").value) || 120;
+            const spamTarget_2 = document.getElementById("simSpamTarget_2").value;
+            const spamStartTime_2 = parseInt(document.getElementById("simSpamStartTime_2").value) || 120;
+            const spamDuration_2_val = parseInt(document.getElementById("simSpamDuration_2").value) || 60;
+
+            simCurrentLat = parseFloat(document.getElementById("initialSimLat").value);
+            simCurrentLon = parseFloat(document.getElementById("initialSimLon").value);
+            if(isNaN(simCurrentLat)) simCurrentLat = -23.0;
+            if(isNaN(simCurrentLon)) simCurrentLon = -47.0;
+            document.getElementById("current-latitude").value = simCurrentLat.toFixed(5);
+            document.getElementById("current-longitude").value = simCurrentLon.toFixed(5);
+            document.getElementById("simMovementStatus").textContent = "Inactive";
+            document.getElementById("simSpamStatus_1").textContent = "Inactive";
+            document.getElementById("simSpamStatus_2").textContent = "Inactive";
+
+            simTimer = setInterval(() => {
+                if (!isSimulationRunning) { clearInterval(simTimer); simTimer = null; return; }
+                simElapsedTime++;
+                document.getElementById("simCurrentTimeDisplay").textContent = simElapsedTime;
+
+                if (movementTarget !== "none" && simElapsedTime >= movementStartTime && !movementStarted) {
+                    movementStarted = true;
+                    simMovementActive = true;
+                    let timeRemainingInSim = duration - simElapsedTime;
+                    let effectiveMoveDuration = Math.max(1, Math.min(desiredMovementDuration, timeRemainingInSim));
+                    startSimulatedMovement(movementTarget, simCurrentLat, simCurrentLon, effectiveMoveDuration);
+                    document.getElementById("simMovementStatus").textContent = `Moving (to ${CACHE_COORDS[movementTarget]?.label || movementTarget})`;
+                }
+                if (spamTarget_1 !== "none" && simElapsedTime >= spamStartTime_1 && !simSpamEventSent_1) {
+                    simSpamActive_1 = true;
+                    simSpamEventSent_1 = true;
+                    startSimulatedCacheSpam(spamTarget_1, 1);
+                    document.getElementById("simSpamStatus_1").textContent = `Spamming (${CACHE_COORDS[spamTarget_1]?.label || spamTarget_1})`;
+                }
+                if (simSpamActive_1 && simElapsedTime >= (spamStartTime_1 + spamDuration_1_val)) {
+                    simSpamActive_1 = false;
+                    document.getElementById("simSpamStatus_1").textContent = "Inactive";
+                }
+                if (spamTarget_2 !== "none" && simElapsedTime >= spamStartTime_2 && !simSpamEventSent_2) {
+                    simSpamActive_2 = true;
+                    simSpamEventSent_2 = true;
+                    startSimulatedCacheSpam(spamTarget_2, 2);
+                    document.getElementById("simSpamStatus_2").textContent = `Spamming (${CACHE_COORDS[spamTarget_2]?.label || spamTarget_2})`;
+                }
+                if (simSpamActive_2 && simElapsedTime >= (spamStartTime_2 + spamDuration_2_val)) {
+                    simSpamActive_2 = false;
+                    document.getElementById("simSpamStatus_2").textContent = "Inactive";
+                }
+
+                reportLocationToSteering(simCurrentLat, simCurrentLon);
+                if (simElapsedTime >= duration) {
+                    stopCurrentSimulation(true);
+                }
+            }, 1000);
+        }
+
+        function startSimulatedMovement(targetCacheName, initialClientLat, initialClientLon, moveDurationSec) {
+            if (!CACHE_COORDS[targetCacheName]) {
+                simMovementActive = false; document.getElementById("simMovementStatus").textContent = "Error";
+                return;
+            }
+            const targetCoord = CACHE_COORDS[targetCacheName];
+            const totalSteps = moveDurationSec > 0 ? Math.max(1, Math.floor(moveDurationSec)) : 1;
+
+            const stepLat = (targetCoord.lat - initialClientLat) / totalSteps;
+            const stepLon = (targetCoord.lon - initialClientLon) / totalSteps;
+            let stepsTaken = 0;
+
+            if (simIntervalID_movement) clearInterval(simIntervalID_movement);
+            simIntervalID_movement = null;
+
+            const intervalFunc = () => {
+                if (!isSimulationRunning || !simMovementActive || !simIntervalID_movement) {
+                    stopInterval(simIntervalID_movement); simIntervalID_movement = null;
+                    return;
+                }
+                if (stepsTaken < totalSteps) {
+                    simCurrentLat += stepLat;
+                    simCurrentLon += stepLon;
+                    stepsTaken++;
+                    document.getElementById("current-latitude").value = simCurrentLat.toFixed(5);
+                    document.getElementById("current-longitude").value = simCurrentLon.toFixed(5);
+                } else {
+                    simCurrentLat = targetCoord.lat;
+                    simCurrentLon = targetCoord.lon;
+                    document.getElementById("current-latitude").value = simCurrentLat.toFixed(5);
+                    document.getElementById("current-longitude").value = simCurrentLon.toFixed(5);
+                    stopInterval(simIntervalID_movement); simIntervalID_movement = null;
+                    simMovementActive = false;
+                    if(isSimulationRunning) document.getElementById("simMovementStatus").textContent = "Reached Target";
+                }
+            };
+            simIntervalID_movement = setInterval(intervalFunc, 1000);
+        }
+
+        function startSimulatedCacheSpam(targetCacheName, phaseId) {
+            if (!CACHE_COORDS[targetCacheName]) {
+                if (phaseId === 1) { simSpamActive_1 = false; document.getElementById("simSpamStatus_1").textContent = "Error"; }
+                else { simSpamActive_2 = false; document.getElementById("simSpamStatus_2").textContent = "Error"; }
+                return;
+            }
+            const spamDurationElementId = `simSpamDuration_${phaseId}`;
+            const spamDurationValue = parseInt(document.getElementById(spamDurationElementId)?.value);
+             if (isNaN(spamDurationValue) || spamDurationValue <=0 ) {
+                 // console.warn(`[SPAM ${phaseId}] Invalid duration for spam: ${document.getElementById(spamDurationElementId)?.value}`);
+                 if (phaseId === 1) { simSpamActive_1 = false; document.getElementById("simSpamStatus_1").textContent = "Error: Invalid Duration"; }
+                 else { simSpamActive_2 = false; document.getElementById("simSpamStatus_2").textContent = "Error: Invalid Duration"; }
+                return;
+            }
+
+            const payload = {
+                server_name: targetCacheName,
+                factor: 15.0,
+                duration_seconds: spamDurationValue
+            };
+            fetch("https://steering-service:30500/latency_event", {
+                method: "POST",
+                body: JSON.stringify(payload),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            })
+            .then(response => response.text().then(text => ({ok: response.ok, text, status: response.status})))
+            .then(data => {
+                // if (!data.ok) console.warn(`[SPAM ${phaseId}] Oracle response error ${data.status}: ${data.text}`);
+            })
+            // .catch(err => console.warn(`[SPAM ${phaseId}] Error reporting spam event for ${targetCacheName}:`, err));
+            .catch(err => {});
+        }
+
+        function reportLocationToSteering(lat, lon) {
+            if (!isSimulationRunning || lat === undefined || lon === undefined) return;
+            const payload = { time: simElapsedTime, lat: lat, long: lon };
+            fetch("https://steering-service:30500/coords", {
+                method: "POST", body: JSON.stringify(payload),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            })
+            // .catch(error => console.warn("[CLIENT] Fetch (location) to /coords failed:", error));
+            .catch(error => {});
+        }
+
+        function reportLatencyToSteering(lat, lon, clientMeasuredLatency, serverUsed) {
+            if (!isSimulationRunning || lat === undefined || lon === undefined) return;
+            if (clientMeasuredLatency === undefined || serverUsed === undefined) return;
+
+            const payload = {
+                time: simElapsedTime,
+                lat: lat,
+                long: lon,
+                rt: clientMeasuredLatency,
+                server_used: serverUsed
+            };
+            fetch("https://steering-service:30500/coords", {
+                method: "POST", body: JSON.stringify(payload),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            })
+            .then(response => response.text().then(text => ({ok: response.ok, status: response.status, text})))
+            .then(data => {
+                // if (!data.ok) console.warn(`[CLIENT] Latency report /coords error ${data.status}: ${data.text}`);
+            })
+            // .catch(error => console.error("[CLIENT] Fetch (latency) to /coords failed:", error));
+            .catch(error => {});
+        }
+
+        function _load() {
+            let newMpdUrl = document.getElementById("manifest").value;
+            if (!newMpdUrl) { alert("Please enter an MPD URL."); return; }
+
+            manifestSuccessfullyLoaded = false;
+            document.getElementById("button_StartControlledSim").disabled = true;
+            if (isSimulationRunning) stopCurrentSimulation(true);
+
+            setupPlayer();
+            _resetUIOnly();
+
+            try {
+                player.attachSource(newMpdUrl);
+
+                onManifestLoadedCallback = function(e) {
+                    if(e.error) {
+                        // console.error("Manifest Load Error:", e.error);
+                        alert("Error loading manifest: " + (e.error.message || e.error));
+                        manifestSuccessfullyLoaded = false;
+                        document.getElementById("button_StartControlledSim").disabled = true;
+                    } else {
+                        // console.log("Manifest loaded successfully.");
+                        manifestSuccessfullyLoaded = true;
+                        const autoStartEnabled = document.getElementById("autoStartCheckbox").checked;
+
+                        if (autoStartEnabled) {
+                             if (onStreamInitForAutomaticPlay && player) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForAutomaticPlay);
+                            onStreamInitForAutomaticPlay = function() {
+                                if (player.getActiveStream() && player.isReady()) {
+                                    if (manifestSuccessfullyLoaded && !isSimulationRunning) {
+                                        startControlledSimulation();
+                                    }
+                                }
+                                if (player) player.off(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForAutomaticPlay);
+                            };
+                            if (player.getActiveStream() && player.isReady()) {
+                                onStreamInitForAutomaticPlay();
+                            } else if (player.isReady()){
+                                player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, onStreamInitForAutomaticPlay, null, { once: true });
+                            } else {
+                                document.getElementById("button_StartControlledSim").disabled = false;
+                            }
+                        } else {
+                            document.getElementById("button_StartControlledSim").disabled = false;
+                        }
+                    }
+                     if (player) player.off(dashjs.MediaPlayer.events.MANIFEST_LOADED, onManifestLoadedCallback);
+                };
+                player.on(dashjs.MediaPlayer.events.MANIFEST_LOADED, onManifestLoadedCallback, null, {once: true});
+
+                if (onManifestErrorCallback && player) player.off(dashjs.MediaPlayer.events.ERROR, onManifestErrorCallback);
+                onManifestErrorCallback = function(e) {
+                    if (e.error && e.error.code && (
+                        e.error.code === dashjs.MediaPlayer.errors.MANIFEST_LOADER_PARSING_FAILURE_ERROR_CODE ||
+                        e.error.code === dashjs.MediaPlayer.errors.MANIFEST_LOADER_LOADING_FAILURE_ERROR_CODE ||
+                        e.error.code === dashjs.MediaPlayer.errors.DOWNLOAD_ERROR_ID_MANIFEST
+                        )) {
+                        // console.error("Manifest specific load/parse error:", e.error);
+                        alert("Failed to load or parse manifest: " + (e.error.message || e.error));
+                        manifestSuccessfullyLoaded = false;
+                        document.getElementById("button_StartControlledSim").disabled = true;
+                    }
+                    if (player) player.off(dashjs.MediaPlayer.events.ERROR, onManifestErrorCallback);
+                };
+                player.on(dashjs.MediaPlayer.events.ERROR, onManifestErrorCallback, null, {once: true});
+
+            } catch (error) {
+                 // console.error("Error attaching source to player:", error);
+                 alert("Error setting up player with MPD.");
+                 manifestSuccessfullyLoaded = false;
+                 document.getElementById("button_StartControlledSim").disabled = true;
+            }
+        }
+
+        function _onFragmentLoadingStarted(e) {
+            try {
+                if (e && e.mediaType && (e.mediaType === "video" || e.mediaType === "audio") && e.request) {
+                    const key = e.mediaType + "_" + e.request.index;
+                    if (e.request.serviceLocation) {
+                        fragmentLoadStarts[key] = {
+                            startTime: performance.now(),
+                            serviceLocation: e.request.serviceLocation,
+                            url: e.request.url
+                        };
+                        currentSegmentServiceLocation[e.mediaType] = e.request.serviceLocation;
+                        _updateActiveServerIcons();
+                    }
+                }
+            } catch (err) { /* console.error("[CLIENT] Error in _onFragmentLoadingStarted:", err); */ }
+        }
+
+        function _onFragmentLoadingCompleted(e) {
+            try {
+                const key = e.mediaType + "_" + e.request.index;
+                if (e && e.request && fragmentLoadStarts[key]) {
+                    const loadInfo = fragmentLoadStarts[key];
+                    const endTime = performance.now();
+                    let clientMeasuredLatencyMs = Math.round(endTime - loadInfo.startTime);
+                    const serverUsed = loadInfo.serviceLocation;
+
+                    delete fragmentLoadStarts[key];
+
+                    if (isSimulationRunning) {
+                        if (simCurrentLat !== undefined && simCurrentLon !== undefined) {
+                            reportLatencyToSteering(simCurrentLat, simCurrentLon, clientMeasuredLatencyMs, serverUsed);
+                        }
+                    }
+                }
+            } catch (err) { /* console.error("[CLIENT] Error in _onFragmentLoadingCompleted:", err); */ }
+        }
+
+        function _onContentSteeringRequestCompleted(e) {
+            try {
+                if (!e) return;
+                document.getElementById(`steering-request-timestamp`).innerText = new Date().toLocaleTimeString();
+                if (e.url) document.getElementById(`steering-request-url`).innerText = decodeURIComponent(e.url);
+                if (e.currentSteeringResponseData) {
+                    const data = e.currentSteeringResponseData;
+                    const priority = data["PATHWAY-PRIORITY"] || data.pathwayPriority || [];
+                    document.getElementById(`steering-decision-display`).textContent = priority.map(p => CACHE_COORDS[p]?.label || p).join(' > ');
+                    document.getElementById(`steering-pathway-cloning`).innerText = JSON.stringify(data["PATHWAY-CLONES"] || data.pathwayClones || [], null, 2);
+                } else {
+                     document.getElementById(`steering-decision-display`).textContent = "N/A (No response data)";
+                     document.getElementById(`steering-pathway-cloning`).innerText = "N/A";
+                }
+            } catch (err) { /* console.error("[CLIENT] Error in _onContentSteeringRequestCompleted:", err); */ }
+        }
+
+        function _createIcon(container, serviceLoc, domMap, prefix) {
+            const span = document.createElement("span");
+            span.id = `${prefix}-icon-${serviceLoc}`;
+            const figure = document.createElement("figure"); figure.className = "cdn-selection";
+            const img = document.createElement("img");
+            img.src = "assets/img/server.svg"; img.alt = serviceLoc;
+            img.className = "figure-img img-fluid cdn-selection";
+            const figCaption = document.createElement("figcaption"); figCaption.className = "figure-caption";
+            figCaption.textContent = CACHE_COORDS[serviceLoc]?.label || serviceLoc;
+            figure.append(img, figCaption); span.appendChild(figure); container.appendChild(span);
+            domMap[serviceLoc] = img;
+        }
+
+        function _updateActiveServerIcons() {
+            const activeServers = {};
+            if (currentSegmentServiceLocation.audio) activeServers[currentSegmentServiceLocation.audio] = true;
+            if (currentSegmentServiceLocation.video) activeServers[currentSegmentServiceLocation.video] = true;
+            for (const serverName in cdnIconDomElements) {
+                if (cdnIconDomElements.hasOwnProperty(serverName)) {
+                    cdnIconDomElements[serverName].src = activeServers[serverName] ? "assets/img/server-active.svg" : "assets/img/server.svg";
+                }
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", init);
+    </script>
+</body>
+</html>

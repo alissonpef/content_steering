@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.0//EN" "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg version="1.0" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+	 width="800px" height="800px" viewBox="0 0 64 64" enable-background="new 0 0 64 64" xml:space="preserve">
+<g>
+	<circle fill="#231F20" cx="40" cy="55" r="1"/>
+	<circle fill="#231F20" cx="24" cy="55" r="1"/>
+	<circle fill="#231F20" cx="32" cy="55" r="1"/>
+	<path fill="#231F20" d="M12,60c0,2.211,1.789,4,4,4h32c2.211,0,4-1.789,4-4V38H12V60z M40,52c1.657,0,3,1.344,3,3s-1.343,3-3,3
+		s-3-1.344-3-3S38.343,52,40,52z M32,52c1.657,0,3,1.344,3,3s-1.343,3-3,3s-3-1.344-3-3S30.343,52,32,52z M24,52
+		c1.657,0,3,1.344,3,3s-1.343,3-3,3s-3-1.344-3-3S22.343,52,24,52z"/>
+	<path fill="#231F20" d="M12,24h40V14H12V24z M21,18h22c0.553,0,1,0.447,1,1s-0.447,1-1,1H21c-0.553,0-1-0.447-1-1S20.447,18,21,18z
+		"/>
+	<path fill="#231F20" d="M12,36h40V26H12V36z M21,30h22c0.553,0,1,0.447,1,1s-0.447,1-1,1H21c-0.553,0-1-0.447-1-1S20.447,30,21,30z
+		"/>
+	<path fill="#231F20" d="M48,0H16c-2.211,0-4,1.789-4,4v8h40V4C52,1.789,50.211,0,48,0z M43,8H21c-0.553,0-1-0.447-1-1s0.447-1,1-1
+		h22c0.553,0,1,0.447,1,1S43.553,8,43,8z"/>
+</g>
+</svg>
