@@ -17,7 +17,7 @@ from dynamic_latency_oracle import DynamicLatencyOracle
 
 STEERING_PORT = 30500
 PROJECT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "Graphics", "Logs")
+LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "graphics", "data", "raw")
 CSV_HEADERS = [
     "timestamp_server", "sim_time_client", "client_lat", "client_lon",
     "server_used_for_latency", "experienced_latency_ms_CLIENT",

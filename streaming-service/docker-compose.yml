@@ -2,6 +2,9 @@ services:
   cache-1:
     container_name: video-streaming-cache-1
     image: caddy
+    ports:
+      - "8441:443"
+      - "8081:80" 
     volumes:
       - ./Caddyfile-1:/etc/caddy/Caddyfile
       - ./certs:/root/certs
@@ -13,6 +16,9 @@ services:
   cache-2:
     container_name: video-streaming-cache-2
     image: caddy
+    ports:
+      - "8442:443"
+      - "8082:80"  
     volumes:
       - ./Caddyfile-2:/etc/caddy/Caddyfile
       - ./certs:/root/certs
@@ -24,6 +30,9 @@ services:
   cache-3:
     container_name: video-streaming-cache-3
     image: caddy
+    ports: 
+      - "8443:443"
+      - "8083:80"
     volumes:
       - ./Caddyfile-3:/etc/caddy/Caddyfile
       - ./certs:/root/certs

@@ -1,33 +1,50 @@
-#! /bin/bash
-echo """
-==================================================
-  Creating certificate for $1
-==================================================
-"""
-mkcert $1
+#!/bin/bash
 
-echo """
-==================================================
-  Copying $1 certificates to ./$1/certs
-==================================================
-"""
+set -e
 
-mv ./$1.pem ./$1/certs
-mv ./$1-key.pem ./$1/certs
+SERVICES=(
+    "video-streaming-cache-1"
+    "video-streaming-cache-2"
+    "video-streaming-cache-3"
+    "steering-service"
+)
 
+echo "=================================================="
+echo " Verifying the local mkcert CA installation... "
+echo "=================================================="
+mkcert -install
+echo ""
 
-echo """
-==================================================
-  Creating certificate for steering-service
-==================================================
-"""
-mkcert steering-service
+for SERVICE_NAME in "${SERVICES[@]}"; do
+    DEST_DIR=""
 
-echo """
-==================================================
-  Copying steering-service certificates to ./steering-service/certs
-==================================================
-"""
+    if [[ "$SERVICE_NAME" == "steering-service" ]]; then
+        DEST_DIR="./steering-service/certs"
+    elif [[ "$SERVICE_NAME" == "video-streaming-cache-"* ]]; then
+        DEST_DIR="./streaming-service/certs"
+    else
+        echo "WARNING: Unknown service name: '$SERVICE_NAME'. Skipping."
+        continue
+    fi
 
-mv ./steering-service.pem ./steering-service/certs
-mv ./steering-service-key.pem ./steering-service/certs
+    echo "--------------------------------------------------"
+    echo "  Creating certificate for: $SERVICE_NAME"
+    echo "  Destination directory:   $DEST_DIR"
+    echo "--------------------------------------------------"
+
+    mkdir -p "$DEST_DIR"
+
+    echo "--> Generating certificate with mkcert..."
+    mkcert "$SERVICE_NAME"
+
+    echo "--> Moving certificate files..."
+    mv "./${SERVICE_NAME}.pem" "$DEST_DIR/"
+    mv "./${SERVICE_NAME}-key.pem" "$DEST_DIR/"
+
+    echo "--> Success! Certificate for '$SERVICE_NAME' created in $DEST_DIR"
+    echo ""
+done
+
+echo "=================================================="
+echo "   ALL CERTIFICATES WERE CREATED SUCCESSFULLY!   "
+echo "=================================================="
