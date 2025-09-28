@@ -11,7 +11,7 @@ import re
 
 logger = logging.getLogger("generate_graphs")
 
-BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DEFAULT_RAW_LOGS_DIR = os.path.join(BASE_GRAPHICS_DIR, "data", "raw")
 DEFAULT_OUTPUT_DIR = os.path.join(BASE_GRAPHICS_DIR, "output")
 os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)

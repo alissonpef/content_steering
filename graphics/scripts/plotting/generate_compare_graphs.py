@@ -8,7 +8,7 @@ import numpy as np
 
 logger = logging.getLogger("compare_strategies")
 
-BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DEFAULT_PROCESSED_LOGS_DIR = os.path.join(BASE_GRAPHICS_DIR, "data", "processed")
 DEFAULT_OUTPUT_DIR = os.path.join(BASE_GRAPHICS_DIR, "output")
 COMPARISON_X_AXIS_LIMIT = 150

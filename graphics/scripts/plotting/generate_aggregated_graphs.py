@@ -11,7 +11,7 @@ import math
 
 logger = logging.getLogger("plot_aggregated_logs")
 
-BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+BASE_GRAPHICS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DEFAULT_PROCESSED_LOGS_DIR = os.path.join(BASE_GRAPHICS_DIR, "data", "processed")
 DEFAULT_OUTPUT_DIR = os.path.join(BASE_GRAPHICS_DIR, "output")
 AGGREGATED_X_AXIS_LIMIT = 150
