@@ -61,6 +61,9 @@ class ContainerMonitor:
         active_containers_this_cycle = set()
         try:
             for container in self.client.containers.list(all=True):
+                if not container.name.startswith("video-streaming-cache-"):
+                    continue
+
                 active_containers_this_cycle.add(container.name)
                 if container.status != "running":
                     if container.name in self.container_stats:
@@ -146,31 +149,6 @@ class ContainerMonitor:
                 if lat is not None and lon is not None and ip != "N/A":
                     node_coords[name] = {"lat": lat, "lon": lon}
         return node_coords
-
-    def get_container_data(self, container_name: str, data_key: str):
-        if container_name in self.container_stats and self.container_stats[container_name]:
-            return self.container_stats[container_name][-1].get(data_key)
-        return None
-
-    def print_stats(self):
-        monitor_logger.info("--- Current Container Statistics ---")
-        if not self.container_stats:
-            monitor_logger.info("No container statistics available.")
-            return
-        for name, stats_list in self.container_stats.items():
-            monitor_logger.info(f"Stats for {name}:")
-            if stats_list:
-                latest_stats = stats_list[-1]
-                log_message_parts = []
-                for key, value in latest_stats.items():
-                    if isinstance(value, float):
-                        log_message_parts.append(f"  {key.replace('_', ' ').title()}: {value:.2f}")
-                    else:
-                        log_message_parts.append(f"  {key.replace('_', ' ').title()}: {value}")
-                log_message_parts.append(f"  Metrics History Size: {len(stats_list)}")
-                monitor_logger.info("\n".join(log_message_parts))
-            else:
-                monitor_logger.info(f"  No statistics registered for {name}.")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

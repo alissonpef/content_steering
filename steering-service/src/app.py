@@ -11,13 +11,17 @@ from flask_cors import CORS
 
 from dash_parser import DashParser
 from monitor import ContainerMonitor
-from selector import (EpsilonGreedy, RandomSelector, NoSteeringSelector,
+from strategies import (EpsilonGreedy, RandomSelector, NoSteeringSelector,
                       UCB1Selector, OracleBestChoiceSelector, D_UCB, LinUCBSelector)
 from dynamic_latency_oracle import DynamicLatencyOracle
 
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.json")
+with open(CONFIG_PATH, 'r') as f:
+    CONFIG = json.load(f)
+
 STEERING_PORT = 30500
 PROJECT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "graphics", "data", "raw")
+LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "raw")
 CSV_HEADERS = [
     "timestamp_server", "sim_time_client", "client_lat", "client_lon",
     "server_used_for_latency", "experienced_latency_ms_CLIENT",
@@ -34,8 +38,8 @@ latency_oracle = None
 active_log_filename = None
 
 last_client_coords = {'lat': None, 'lon': None, 'time': 0}
-MOVEMENT_THRESHOLD_KM = 0.05
-CLIENT_COORDS_UPDATE_INTERVAL_SEC = 0.9
+MOVEMENT_THRESHOLD_KM = CONFIG.get('simulation', {}).get('movement_threshold_km', 0.05)
+CLIENT_COORDS_UPDATE_INTERVAL_SEC = CONFIG.get('simulation', {}).get('client_coords_update_interval_sec', 0.9)
 
 last_decision_contexts = {}
 
@@ -77,8 +81,11 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2) -> float:
 def setup_csv_logging(filename: str):
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
-        with open(filename, mode="w", newline="") as file:
-            writer = csv.writer(file); writer.writerow(CSV_HEADERS)
+        with open(filename, mode="w", newline="", buffering=1) as file:
+            writer = csv.writer(file)
+            writer.writerow(CSV_HEADERS)
+            file.flush()
+            os.fsync(file.fileno())
         app_logger.info(f"CSV log configured: {filename}")
     except Exception as e:
         app_logger.critical(f"Error setting up CSV log for {filename}: {e}", exc_info=True)
@@ -86,8 +93,10 @@ def setup_csv_logging(filename: str):
 def log_data_to_csv(data_dict: dict, filename: str):
     row = [data_dict.get(h) for h in CSV_HEADERS]
     try:
-        with open(filename, mode="a", newline="") as file:
+        with open(filename, mode="a", newline="", buffering=1) as file:
             csv.writer(file).writerow(row)
+            file.flush()
+            os.fsync(file.fileno())
     except Exception as e:
         app_logger.error(f"Error writing to CSV {filename}: {e}", exc_info=True)
 
@@ -102,9 +111,10 @@ def get_unique_log_filename(base_name: str, user_suffix: str, directory: str = L
         cnt += 1
 
 class Main:
-    def __init__(self, sel_inst, strategy_arg: str, log_file: str):
+    def __init__(self, sel_inst, strategy_arg: str, log_file: str, log_suffix: str):
         global selector_instance, current_strategy_name, active_log_filename
         selector_instance, current_strategy_name, active_log_filename = sel_inst, strategy_arg, log_file
+        self.log_suffix = log_suffix
         self.app = Flask(__name__)
         CORS(self.app)
         werkzeug_logger = logging.getLogger("werkzeug")
@@ -133,6 +143,53 @@ class Main:
         return True
 
     def _register_routes(self):
+        @self.app.route("/reset_simulation", methods=["POST"])
+        def reset_simulation():
+            global selector_instance, active_log_filename, current_strategy_name, selector_initialized
+
+            app_logger.info(f"Resetting simulation... Old Selector ID: {id(selector_instance)}")
+            if hasattr(selector_instance, 'counts'):
+                app_logger.info(f"Old Selector Counts: {selector_instance.counts}")
+
+            active_log_filename = get_unique_log_filename(f"log_{current_strategy_name}", self.log_suffix, directory=LOG_DIR)
+            setup_csv_logging(filename=active_log_filename)
+            
+            if latency_oracle and hasattr(latency_oracle, 'reset_events'):
+                latency_oracle.reset_events()
+
+            strategy_config = CONFIG.get('strategies', {}).get(current_strategy_name, {})
+            
+            if current_strategy_name == "epsilon_greedy":
+                epsilon = strategy_config.get('epsilon', 0.1)
+                selector_instance = EpsilonGreedy(epsilon=epsilon, counts={}, values={}, monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "no_steering":
+                selector_instance = NoSteeringSelector(monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "random":
+                selector_instance = RandomSelector(monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "ucb1":
+                c = strategy_config.get('c', 2.0)
+                selector_instance = UCB1Selector(c=c, monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "linucb":
+                d = strategy_config.get('d', 5)
+                alpha = strategy_config.get('alpha', 1.0)
+                selector_instance = LinUCBSelector(d=d, alpha=alpha, monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "d_ucb":
+                gamma_min = strategy_config.get('gamma_min', 0.1)
+                gamma_max = strategy_config.get('gamma_max', 1.0)
+                movement_weight = strategy_config.get('movement_weight', 0.4)
+                latency_shock_weight = strategy_config.get('latency_shock_weight', 0.6)
+                selector_instance = D_UCB(gamma_min=gamma_min, gamma_max=gamma_max, 
+                                         movement_weight=movement_weight, latency_shock_weight=latency_shock_weight,
+                                         monitor=monitor, latency_oracle=latency_oracle)
+            elif current_strategy_name == "oracle_best_choice":
+                selector_instance = OracleBestChoiceSelector(monitor=monitor, latency_oracle=latency_oracle)
+            
+            selector_initialized = False
+            app_logger.info(f"Simulation reset complete. New Selector ID: {id(selector_instance)}")
+            app_logger.info(f"New Log File: {active_log_filename}")
+            
+            return jsonify({"message": "Simulation reset", "new_log": os.path.basename(active_log_filename)}), 200
+
         @self.app.route("/<path:name>", methods=["GET", "POST"])
         def do_remote_steering(name: str):
             global last_steering_main_server_decision, last_decision_contexts
@@ -156,6 +213,9 @@ class Main:
             if not ordered_nodes:
                 app_logger.error("No server selected by strategy.")
                 return jsonify({"error": "No selectable server"}), 503
+            
+            if latency_oracle and ordered_nodes:
+                latency_oracle.track_server_selection(ordered_nodes[0])
             
             nodes_p = [(n, n) for n in ordered_nodes]
             uri_scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
@@ -232,7 +292,11 @@ class Main:
                              "experienced_latency_ms_CLIENT": rt_c,
                              "experienced_latency_ms_ORACLE": oracle_lat_for_feedback,
                              "experienced_latency_ms": oracle_lat_for_feedback}
-                log_data_to_csv(log_entry, filename=active_log_filename)
+                
+                if active_log_filename:
+                    log_data_to_csv(log_entry, filename=active_log_filename)
+                else:
+                    app_logger.warning("Attempted to log data but no log file is active. Call /reset_simulation first.")
 
                 if not self._initialize_selector_if_needed():
                     return "Service not ready (selector in /coords)", 503
@@ -262,10 +326,11 @@ class Main:
                     return "RL updated and logged", 200
                 return "Data logged (no RL update)", 200
             elif lat is not None and lon is not None:
-                log_entry = {**log_base, "server_used_for_latency": srv_u_feedback,
-                             "experienced_latency_ms_CLIENT": rt_c,
-                             "experienced_latency_ms_ORACLE": None, "experienced_latency_ms": None}
-                log_data_to_csv(log_entry, filename=active_log_filename)
+                if active_log_filename:
+                    log_entry = {**log_base, "server_used_for_latency": srv_u_feedback,
+                                 "experienced_latency_ms_CLIENT": rt_c,
+                                 "experienced_latency_ms_ORACLE": None, "experienced_latency_ms": None}
+                    log_data_to_csv(log_entry, filename=active_log_filename)
                 return "Location data logged", 200
             else:
                 app_logger.warning(f"Invalid or missing data in /coords: srv_u={srv_u_feedback}, rt_c={rt_c}, lat={lat}, lon={lon}")
@@ -327,44 +392,60 @@ if __name__ == "__main__":
     current_strategy_name = args.strategy
     app_logger.info(f"Selected strategy: {current_strategy_name}")
 
-    log_base = f"log_{current_strategy_name}"
-
-    active_log_filename = get_unique_log_filename(log_base, args.log_suffix, directory=LOG_DIR)
-    app_logger.info(f"Active log file: {os.path.basename(active_log_filename)}")
+    active_log_filename = None
+    app_logger.info("Log file will be created when simulation starts (via /reset_simulation).")
 
     app_logger.info("Starting container monitor...")
+    monitor_config = CONFIG.get('monitor', {})
     monitor.start_collecting()
+    
     app_logger.info("Initializing latency oracle...")
-    latency_oracle = DynamicLatencyOracle(monitor, update_interval_seconds=1)
+    oracle_config = CONFIG.get('oracle', {})
+    oracle_interval = oracle_config.get('update_interval_seconds', 1)
+    latency_oracle = DynamicLatencyOracle(monitor, update_interval_seconds=oracle_interval)
+    
+    latency_oracle.movement_smoothing_factor = oracle_config.get('movement_smoothing_factor', 0.3)
+    app_logger.info(f"Oracle configured: smoothing_factor={latency_oracle.movement_smoothing_factor}")
+    
     latency_oracle.start()
 
     app_logger.info("Briefly waiting for monitor and oracle to gather initial data...")
-    time.sleep(max(monitor.interval if hasattr(monitor, 'interval') else 2, latency_oracle.update_interval_seconds) + 1.0)
+    time.sleep(max(monitor.interval if hasattr(monitor, 'interval') else 2, oracle_interval) + 1.0)
 
+    strategy_config = CONFIG.get('strategies', {}).get(args.strategy, {})
+    
     if args.strategy == "epsilon_greedy":
-        selector_instance = EpsilonGreedy(epsilon=0.1, counts={}, values={}, monitor=monitor, latency_oracle=latency_oracle)
+        epsilon = strategy_config.get('epsilon', 0.1)
+        selector_instance = EpsilonGreedy(epsilon=epsilon, counts={}, values={}, monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "no_steering":
         selector_instance = NoSteeringSelector(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "random":
         selector_instance = RandomSelector(monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "ucb1":
-        selector_instance = UCB1Selector(monitor=monitor, latency_oracle=latency_oracle)
+        c = strategy_config.get('c', 2.0)
+        selector_instance = UCB1Selector(c=c, monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "linucb":
-        selector_instance = LinUCBSelector(d=5, alpha=1.0, monitor=monitor, latency_oracle=latency_oracle)
+        d = strategy_config.get('d', 5)
+        alpha = strategy_config.get('alpha', 1.0)
+        selector_instance = LinUCBSelector(d=d, alpha=alpha, monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "d_ucb":
-        selector_instance = D_UCB(monitor=monitor, latency_oracle=latency_oracle)
+        gamma_min = strategy_config.get('gamma_min', 0.1)
+        gamma_max = strategy_config.get('gamma_max', 1.0)
+        movement_weight = strategy_config.get('movement_weight', 0.4)
+        latency_shock_weight = strategy_config.get('latency_shock_weight', 0.6)
+        selector_instance = D_UCB(gamma_min=gamma_min, gamma_max=gamma_max,
+                                 movement_weight=movement_weight, latency_shock_weight=latency_shock_weight,
+                                 monitor=monitor, latency_oracle=latency_oracle)
     elif args.strategy == "oracle_best_choice":
         selector_instance = OracleBestChoiceSelector(monitor=monitor, latency_oracle=latency_oracle)
     else:
         app_logger.critical(f"Unknown strategy: {args.strategy}. Defaulting to EpsilonGreedy.")
         current_strategy_name = "epsilon_greedy"
-        log_base = f"log_{current_strategy_name}"
-        active_log_filename = get_unique_log_filename(log_base, args.log_suffix, directory=LOG_DIR)
-        selector_instance = EpsilonGreedy(epsilon=0.1, counts={}, values={}, monitor=monitor, latency_oracle=latency_oracle)
+        epsilon = CONFIG.get('strategies', {}).get('epsilon_greedy', {}).get('epsilon', 0.1)
+        selector_instance = EpsilonGreedy(epsilon=epsilon, counts={}, values={}, monitor=monitor, latency_oracle=latency_oracle)
 
-    setup_csv_logging(filename=active_log_filename)
     app_logger.info("Creating Flask application instance...")
-    main_app = Main(selector_instance, current_strategy_name, active_log_filename)
+    main_app = Main(selector_instance, current_strategy_name, active_log_filename, args.log_suffix)
 
     app_logger.info(f"Starting Flask service (Strategy: {current_strategy_name})...")
     try:

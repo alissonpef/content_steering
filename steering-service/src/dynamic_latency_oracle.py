@@ -30,22 +30,20 @@ class DynamicLatencyOracle:
     def __init__(self, monitor, update_interval_seconds: int = 2):
         self.monitor = monitor
         self.server_latencies = {}
-        # Configurações base para latência
         self.server_base_latencies_config = {
             "video-streaming-cache-1": 30,
             "video-streaming-cache-2": 25,
             "video-streaming-cache-3": 125
         }
-        # Novas configurações base para jitter e perda de pacotes
         self.server_base_jitter_config = {
-            "video-streaming-cache-1": 5,   # ms
-            "video-streaming-cache-2": 10,  # ms
-            "video-streaming-cache-3": 20   # ms
+            "video-streaming-cache-1": 5,
+            "video-streaming-cache-2": 10,
+            "video-streaming-cache-3": 20
         }
         self.server_base_packet_loss_config = {
-            "video-streaming-cache-1": 0.001, # 0.1%
-            "video-streaming-cache-2": 0.005, # 0.5%
-            "video-streaming-cache-3": 0.01   # 1.0%
+            "video-streaming-cache-1": 0.001,
+            "video-streaming-cache-2": 0.005,
+            "video-streaming-cache-3": 0.01
         }
         self.server_geo_coords = {}
         self.client_latitude = DynamicLatencyOracle.DEFAULT_INITIAL_CLIENT_LAT
@@ -59,6 +57,17 @@ class DynamicLatencyOracle:
         self.thread = None
         self.noise_std_dev_factor = 0.15
         self.min_simulated_latency = 5
+        
+        self.previous_latencies = {}
+        self.movement_smoothing_factor = 0.3
+        
+        self.latency_history = {}
+        self.server_selection_counts = {}
+        
+        self.burst_active = False
+        self.burst_end_time = 0
+        self.burst_affected_servers = []
+        
         self._update_server_geo_coordinates()
 
     def _update_server_geo_coordinates(self):
@@ -117,11 +126,66 @@ class DynamicLatencyOracle:
                 self.server_latencies[server_name] = final_latency
                 logger.debug(f"Oracle: Updated Latency {server_name}: {final_latency:.2f}ms")
 
+    def _get_time_of_day_multiplier(self):
+        hour = time.localtime().tm_hour
+        if 8 <= hour < 10 or 18 <= hour < 22:
+            return 1.3 + random.uniform(-0.1, 0.2)
+        elif 12 <= hour < 14:
+            return 1.2 + random.uniform(-0.05, 0.1)
+        elif 2 <= hour < 6:
+            return 0.7 + random.uniform(-0.1, 0.1)
+        else:
+            return 1.0 + random.uniform(-0.1, 0.1)
+
+    def _get_burst_multiplier(self, server_name):
+        current_time = time.time()
+        if self.burst_active and current_time < self.burst_end_time:
+            if server_name in self.burst_affected_servers:
+                burst_duration = 30
+                time_since_start = burst_duration - (self.burst_end_time - current_time)
+                remaining_ratio = (self.burst_end_time - current_time) / burst_duration
+                return 1.0 + (1.5 * remaining_ratio)
+        else:
+            self.burst_active = False
+        return 1.0
+
+    def _apply_movement_smoothing(self, server_name, new_latency):
+        if server_name not in self.previous_latencies:
+            self.previous_latencies[server_name] = new_latency
+            return new_latency
+        
+        prev_lat = self.previous_latencies[server_name]
+        smoothed = prev_lat * self.movement_smoothing_factor + new_latency * (1 - self.movement_smoothing_factor)
+        self.previous_latencies[server_name] = smoothed
+        return smoothed
+
+    def trigger_traffic_burst(self, duration_seconds=30, intensity=2.5):
+        with self.lock:
+            self.burst_active = True
+            self.burst_end_time = time.time() + duration_seconds
+            all_servers = list(self.server_latencies.keys())
+            if all_servers:
+                self.burst_affected_servers = random.sample(all_servers, k=min(2, len(all_servers)))
+                logger.info(f"Traffic burst iniciado por {duration_seconds}s em {self.burst_affected_servers}")
+
+    def apply_correlated_failure(self, primary_server, cascade_factor=1.8, duration=20):
+        with self.lock:
+            if primary_server not in self.server_latencies:
+                return
+            
+            self.apply_event_modifier(primary_server, 10.0, duration)
+            
+            other_servers = [s for s in self.server_latencies.keys() if s != primary_server]
+            for server in other_servers:
+                self.apply_event_modifier(server, cascade_factor, duration)
+            
+            logger.warning(f"Falha correlacionada: {primary_server} falhou, cascateando para {other_servers}")
+
+    def track_server_selection(self, server_name: str):
+        with self.lock:
+            self.server_selection_counts[server_name] = self.server_selection_counts.get(server_name, 0) + 1
+
     def get_context_and_final_latency(self, server_name: str) -> tuple[np.ndarray, float]:
-        """
-        Calcula e retorna o vetor de contexto para LinUCB e a latência final simulada.
-        """
-        # 1. Obter os componentes base da latência
         if server_name not in self.server_latencies:
             self._initialize_server_states()
         
@@ -134,8 +198,10 @@ class DynamicLatencyOracle:
             if self.server_event_modifiers.get(server_name) != (1.0, 0):
                 self.server_event_modifiers[server_name] = (1.0, 0)
         
-        # 2. Construir as features para o vetor de contexto
-        # Feature 1: Distância Geográfica
+        time_of_day_mult = self._get_time_of_day_multiplier()
+        burst_mult = self._get_burst_multiplier(server_name)
+        combined_modifier = final_modifier_to_apply * time_of_day_mult * burst_mult
+        
         feature_distance_km = 0.0
         if self.use_distance_penalty and self.client_latitude is not None and self.client_longitude is not None:
             server_coords = self.server_geo_coords.get(server_name)
@@ -145,34 +211,52 @@ class DynamicLatencyOracle:
                     server_coords['lat'], server_coords['lon']
                 )
 
-        # Feature 2: "Carga" do Servidor (latência base + ruído + spam)
         noise = np.random.normal(loc=0, scale=max(1, base_latency_config) * self.noise_std_dev_factor)
-        feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * final_modifier_to_apply
+        feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * combined_modifier
         
-        # Feature 3: Jitter Simulado
         base_jitter = self.server_base_jitter_config.get(server_name, 10)
-        jitter_multiplier = 1.0 + (final_modifier_to_apply - 1.0) * 1.5 # Spam aumenta o jitter
+        distance_jitter_multiplier = 1.0 + (feature_distance_km / 1000) * 0.5
+        jitter_multiplier = (1.0 + (combined_modifier - 1.0) * 1.5) * distance_jitter_multiplier
         feature_jitter = np.random.uniform(base_jitter * 0.5, base_jitter * 1.5) * jitter_multiplier
 
-        # Feature 4: Perda de Pacotes Simulada
         base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
-        feature_packet_loss = min(1.0, base_loss * final_modifier_to_apply) # Spam aumenta a perda
+        feature_packet_loss = min(1.0, base_loss * combined_modifier)
         
-        # Vetor de contexto ENRIQUECIDO (agora com 5 dimensões!)
+        if server_name not in self.latency_history:
+            self.latency_history[server_name] = []
+        self.latency_history[server_name].append(feature_server_load)
+        self.latency_history[server_name] = self.latency_history[server_name][-10:]
+        feature_historical_avg = np.mean(self.latency_history[server_name])
+        
+        current_hour = time.localtime().tm_hour
+        current_min = time.localtime().tm_min
+        feature_time_of_day = (current_hour + current_min / 60) / 24
+        
+        total_selections = sum(self.server_selection_counts.values()) or 1
+        feature_popularity = self.server_selection_counts.get(server_name, 0) / total_selections
+        
+        feature_congestion = min(1.0, max(0.0, (time_of_day_mult - 0.7) / 0.8))
+        
         context_vector = np.array([
             1.0,
             feature_distance_km,
             feature_server_load,
             feature_jitter,
-            feature_packet_loss 
+            feature_packet_loss,
+            feature_historical_avg,
+            feature_time_of_day,
+            feature_popularity,
+            feature_congestion
         ])
 
-        # 3. Calcular a Latência Final (ground truth)
+
         distance_penalty = feature_distance_km * self.ms_per_km_factor
-        jitter_effect_on_latency = feature_jitter * np.random.choice([-1, 1]) # Variação aleatória
-        packet_loss_penalty = 500 if np.random.rand() < feature_packet_loss else 0 # Simula retransmissão
+        jitter_effect_on_latency = feature_jitter * np.random.choice([-1, 1])
+        packet_loss_penalty = 500 if np.random.rand() < feature_packet_loss else 0
         
-        final_latency = feature_server_load + distance_penalty + jitter_effect_on_latency + packet_loss_penalty
+        raw_final_latency = feature_server_load + distance_penalty + jitter_effect_on_latency + packet_loss_penalty
+        
+        final_latency = self._apply_movement_smoothing(server_name, raw_final_latency)
         
         return context_vector, final_latency
 
@@ -208,6 +292,11 @@ class DynamicLatencyOracle:
                     logger.debug(f"Oracle: Active event detected for {server_name} (factor: {factor}, expires at: {expiry_time})")
                     return True
         return False
+
+    def reset_events(self):
+        with self.lock:
+            self.server_event_modifiers = {}
+            logger.info("Oracle: All active events cleared.")
 
     def run_update_loop(self):
         logger.info("Oracle: Starting latency update loop.")
