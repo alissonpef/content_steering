@@ -1,0 +1,39 @@
+{
+  "strategies": {
+    "epsilon_greedy": {
+      "epsilon": 0.05
+    },
+    "ucb1": {
+      "c": 3.0
+    },
+    "d_ucb": {
+      "gamma_min": 0.1,
+      "gamma_max": 1.0,
+      "movement_weight": 0.4,
+      "latency_shock_weight": 0.6,
+      "comment": "Fixed gamma values: STILL=0.98, MOVEMENT=0.90, SHOCK=0.75 (hardcoded in d_ucb.py)"
+    },
+    "linucb": {
+      "d": 9,
+      "alpha": 0.5,
+      "comment": "Fixed: Now forces exploration of all arms once before using UCB scores"
+    }
+  },
+  "simulation": {
+    "default_duration_seconds": 180,
+    "movement_threshold_km": 0.05,
+    "client_coords_update_interval_sec": 0.9
+  },
+  "oracle": {
+    "update_interval_seconds": 1,
+    "movement_smoothing_factor": 0.3,
+    "enable_time_of_day_effects": true,
+    "enable_burst_simulation": false,
+    "burst_duration_seconds": 30,
+    "burst_intensity": 2.5
+  },
+  "monitor": {
+    "interval_seconds": 2,
+    "network_name": "video-streaming_default"
+  }
+}
