@@ -314,5 +314,3 @@ This project demonstrates a functional Content Steering implementation with Rein
 ### Production-Ready Features
 - **Session-level metrics**: Aggregate per-session QoE scores (total rebuffering time, average bitrate, startup delay, quality switches) for professional strategy comparison.
 - **Realistic CDN topology**: Expand from 3 to 5+ CDNs with varied capacities to simulate multi-CDN environments (CloudFront, Akamai, Fastly).
-
-For detailed analysis and implementation roadmap, see `IMPROVEMENTS_ANALYSIS.md`.
