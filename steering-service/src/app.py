@@ -9,7 +9,7 @@ from flask_cors import CORS
 from dash_parser import DashParser
 from monitor import ContainerMonitor
 from strategies import (EpsilonGreedy, RandomSelector, NoSteeringSelector,
-                      UCB1Selector, OracleBestChoiceSelector, D_UCB, LinUCBSelector)
+                      UCB1Selector, OracleBestChoiceSelector, LinUCBSelector)
 from dynamic_latency_oracle import DynamicLatencyOracle, calculate_haversine_distance
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.json")
 with open(CONFIG_PATH, 'r') as f:
@@ -53,7 +53,7 @@ def _configure_all_loggers(default_level=logging.WARNING):
 def _create_strategy_instance(strategy_name: str, monitor_ref, oracle_ref):
     cfg = CONFIG.get('strategies', {}).get(strategy_name, {})
     constructors = {
-        "epsilon_greedy":    lambda: EpsilonGreedy(epsilon=cfg.get('epsilon', 0.3),
+        "epsilon_greedy":    lambda: EpsilonGreedy(epsilon=cfg.get('epsilon', 0.2),
                                                    counts={}, values={},
                                                    monitor=monitor_ref, latency_oracle=oracle_ref),
         "no_steering":       lambda: NoSteeringSelector(monitor=monitor_ref, latency_oracle=oracle_ref),
@@ -62,7 +62,6 @@ def _create_strategy_instance(strategy_name: str, monitor_ref, oracle_ref):
                                                    monitor=monitor_ref, latency_oracle=oracle_ref),
         "linucb":            lambda: LinUCBSelector(d=cfg.get('d', 14), alpha=cfg.get('alpha', 0.5),
                                                      monitor=monitor_ref, latency_oracle=oracle_ref),
-        "d_ucb":             lambda: D_UCB(monitor=monitor_ref, latency_oracle=oracle_ref),
         "oracle_best_choice": lambda: OracleBestChoiceSelector(monitor=monitor_ref, latency_oracle=oracle_ref),
     }
     builder = constructors.get(strategy_name)
@@ -208,8 +207,7 @@ class Main:
             srv_u_fb  = data.get("server_used")
             client_is_moving = self._update_client_position(lat, lon)
             oracle_lat_fb = self._get_oracle_feedback_latency(srv_u_fb)
-            gamma_val = self._update_ducb_env_state(srv_u_fb, oracle_lat_fb, client_is_moving)
-            log_base = self._build_log_base(s_t, lat, lon, gamma_val)
+            log_base = self._build_log_base(s_t, lat, lon)
             if srv_u_fb and rt_c is not None and latency_oracle and oracle_lat_fb is not None:
                 return self._handle_rl_feedback(srv_u_fb, oracle_lat_fb, log_base)
             elif lat is not None and lon is not None:
@@ -286,13 +284,7 @@ class Main:
         all_lats = latency_oracle.get_all_current_latencies()
         return all_lats.get(srv_name)
     @staticmethod
-    def _update_ducb_env_state(srv_name, oracle_lat, client_is_moving):
-        if not isinstance(selector_instance, D_UCB):
-            return None
-        selector_instance.update_environmental_state(False, False)
-        return selector_instance.current_gamma
-    @staticmethod
-    def _build_log_base(s_t, lat, lon, gamma_val):
+    def _build_log_base(s_t, lat, lon):
         all_oracle_lats = latency_oracle.get_all_current_latencies() if latency_oracle else {}
         counts = getattr(selector_instance, "counts", {})
         actual = getattr(selector_instance, "real_counts", counts)
@@ -307,7 +299,7 @@ class Main:
             "rl_counts_json": json.dumps(counts),
             "rl_actual_counts_json": json.dumps(actual),
             "rl_values_json": json.dumps(getattr(selector_instance, "values", {})),
-            "gamma_value": gamma_val,
+            "gamma_value": None,
         }
     def _handle_rl_feedback(self, srv_name, oracle_lat, log_base):
         log_entry = {
@@ -331,7 +323,7 @@ class Main:
                 app_logger.info(f"Server {srv_name} not in selector nodes; feedback logged without RL update.")
                 return "Feedback logged (server not in selector nodes).", 200
         feedback_value = float(oracle_lat)
-        if isinstance(selector_instance, (UCB1Selector, D_UCB, LinUCBSelector)):
+        if isinstance(selector_instance, (UCB1Selector, LinUCBSelector, EpsilonGreedy)):
             feedback_value = 1000.0 / float(oracle_lat) if float(oracle_lat) > 0 else 0.0
         update_kwargs = {}
         if isinstance(selector_instance, LinUCBSelector):
@@ -360,7 +352,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Content Steering Service with RL.")
     parser.add_argument("--strategy", type=str, default="epsilon_greedy",
                         choices=["epsilon_greedy", "no_steering", "random", "ucb1",
-                                 "d_ucb", "oracle_best_choice", "linucb"],
+                                 "oracle_best_choice", "linucb"],
                         help="Steering strategy.")
     parser.add_argument("--log_suffix", type=str, default="",
                         help="Optional suffix for CSV log filename (e.g., _testScenarioX).")
