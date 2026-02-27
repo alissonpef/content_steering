@@ -9,34 +9,53 @@ class LinUCBSelector(Selector):
         self,
         d: int,
         alpha: float,
-        gamma: float = 0.95,
+        gamma: float = 1.0,
         monitor=None,
         latency_oracle=None,
     ):
         super().__init__(monitor=monitor, latency_oracle=latency_oracle)
-        self.d = d
+        self.d_env = d
         self.alpha = alpha
-        self.gamma = gamma
-        self.A_shared = np.identity(self.d)
-        self.b_shared = np.zeros((self.d, 1))
-        self.pull_counts = {}
-        self.total_pulls = 0
+        self.n_arms: int = 0
+        self.d_total: int = 0
+        self.A = None
+        self.b = None
+        self.arm_index: dict = {}
+        self.pull_counts: dict = {}
+        self.total_pulls: int = 0
         selector_logger.info(
-            f"LinUCBSelector initialised (shared model): d={d}, alpha={alpha}, gamma={gamma}"
+            f"LinUCBSelector initialised (shared+arm-indicator): "
+            f"d_env={d}, alpha={alpha}"
         )
 
     def initialize(self, arms_names: list):
         super().initialize(arms_names)
+        n = len(self.nodes)
+        if n != self.n_arms or self.A is None:
+            self.n_arms = n
+            self.d_total = n + self.d_env
+            self.A = np.identity(self.d_total)
+            self.b = np.zeros((self.d_total, 1))
+            self.arm_index = {arm: i for i, arm in enumerate(self.nodes)}
+            selector_logger.info(
+                f"[LinUCB] Model initialised: {n} arms, "
+                f"d_total={self.d_total} ({n}+{self.d_env})"
+            )
         for arm in self.nodes:
             if arm not in self.pull_counts:
                 self.pull_counts[arm] = 0
-                selector_logger.debug(f"[LinUCB] Arm '{arm}' registered.")
+
+    def _augmented_context(self, arm: str, env_ctx: np.ndarray) -> np.ndarray:
+        one_hot = np.zeros(self.n_arms)
+        one_hot[self.arm_index[arm]] = 1.0
+        return np.concatenate([one_hot, env_ctx]).reshape(-1, 1)
 
     def select_arm(self, **kwargs) -> list:
         contexts = kwargs.get("contexts")
         if not contexts:
             selector_logger.error("[LinUCB] 'contexts' not provided for select_arm.")
             return []
+
         if set(contexts.keys()) != set(self.nodes):
             self.initialize(list(contexts.keys()))
 
@@ -47,25 +66,24 @@ class LinUCBSelector(Selector):
                 selector_logger.info(f"[LinUCB] Exploring untested arm: {arm}")
                 return [arm] + other_arms
 
-        ucb_scores = {}
+        ucb_scores: dict = {}
         for arm in self.nodes:
             if arm not in contexts:
                 continue
-            x_a = contexts[arm].reshape(-1, 1)
+            x = self._augmented_context(arm, contexts[arm])
             try:
-                theta_hat = np.linalg.solve(self.A_shared, self.b_shared)
-                v = np.linalg.solve(self.A_shared, x_a)
+                theta_hat = np.linalg.solve(self.A, self.b)
+                v = np.linalg.solve(self.A, x)
             except np.linalg.LinAlgError:
                 selector_logger.warning(
-                    f"Shared A matrix singular — falling back to identity."
+                    f"[LinUCB] Singular A; fallback for arm '{arm}'."
                 )
-                theta_hat = self.b_shared.copy()
-                v = x_a.copy()
-            predicted_reward = float(theta_hat.T.dot(x_a).item())
-            confidence_bonus = self.alpha * math.sqrt(
-                max(0.0, float(x_a.T.dot(v).item()))
-            )
-            ucb_scores[arm] = predicted_reward + confidence_bonus
+                theta_hat = self.b.copy()
+                v = x.copy()
+            predicted_reward = float((theta_hat.T @ x).item())
+            confidence = self.alpha * math.sqrt(max(0.0, float((x.T @ v).item())))
+            ucb_scores[arm] = predicted_reward + confidence
+
         if not ucb_scores:
             return []
         return sorted(ucb_scores, key=ucb_scores.get, reverse=True)
@@ -79,23 +97,20 @@ class LinUCBSelector(Selector):
             return
         if chosen_arm_name not in self.nodes:
             selector_logger.warning(
-                f"[LinUCB] Update: Arm {chosen_arm_name} unknown. Ignoring."
+                f"[LinUCB] Update: Arm '{chosen_arm_name}' unknown. Ignoring."
             )
             return
-        x_chosen = context.reshape(-1, 1)
 
-        if self.gamma < 1.0:
-            eye = np.identity(self.d)
-            self.A_shared = self.gamma * self.A_shared + (1.0 - self.gamma) * eye
-            self.b_shared = self.gamma * self.b_shared
+        x = self._augmented_context(chosen_arm_name, context)
+        self.A = self.A + x @ x.T
+        self.b = self.b + reward * x
 
-        self.A_shared += x_chosen.dot(x_chosen.T)
-        self.b_shared += reward * x_chosen
         self.pull_counts[chosen_arm_name] = self.pull_counts.get(chosen_arm_name, 0) + 1
         self.total_pulls += 1
         selector_logger.debug(
-            f"[LinUCB] Shared model updated via arm '{chosen_arm_name}', "
-            f"reward={reward:.2f}, total_pulls={self.total_pulls}, gamma={self.gamma}."
+            f"[LinUCB] Updated arm '{chosen_arm_name}': "
+            f"reward={reward:.4f}, pulls={self.pull_counts[chosen_arm_name]}, "
+            f"total={self.total_pulls}"
         )
 
     @property
