@@ -1,182 +1,154 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 import os
-import re
 import argparse
 import logging
-import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from plot_utils import (
+    apply_global_style,
+    configure_logger,
+    save_figure,
+    format_axes,
+    sort_legend_by_strategy,
+    get_strategy_style,
+    extract_strategy_from_filename,
+    STRATEGY_LEGEND_ORDER,
+)
 
 logger = logging.getLogger("compare_strategies")
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
+)
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results")
+FILL_ALPHA = 0.15
+WINDOW_SIZE = 5
 
-PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-DEFAULT_PROCESSED_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "processed")
-DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT_DIR, "results")
-COMPARISON_X_AXIS_LIMIT = 150
-os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
 
-STRATEGY_STYLES = {
-    "ucb1": {"color": "tab:blue", "label": "UCB1"},
-    "epsilon_greedy": {"color": "tab:green", "label": "Epsilon Greedy"},
-    "random": {"color": "tab:red", "label": "Random"},
-    "oracle_best_choice": {"color": "tab:purple", "label": "Optimal Strategy"},
-    "no_steering": {"color": "tab:brown", "label": "No Steering"},
-    "d_ucb": {"color": "tab:cyan", "label": "D-UCB"},
-    "linucb": {"color": "tab:pink", "label": "LinUCB"},
-    "default": {"color": "tab:grey", "label": "Unknown"}
-}
-
-def extract_strategy_name(filename_no_ext: str, df_column_data: pd.Series = None) -> str:
-    if df_column_data is not None and not df_column_data.dropna().empty:
-        first_valid_strategy = df_column_data.dropna().iloc[0]
-        if isinstance(first_valid_strategy, str):
-            return first_valid_strategy
-
-    match = re.match(r"log_([a-zA-Z0-9_]+?)_average", filename_no_ext)
-    if match:
-        return match.group(1)
-        
-    logger.warning(f"Could not extract strategy name from '{filename_no_ext}'.")
-    return "Unknown"
-
-def format_comparison_plot(ax, title, xlabel, ylabel, legend_loc='best', xlim_max=None):
-    ax.set_title(title, fontsize=16, pad=15)
-    ax.set_xlabel(xlabel, fontsize=14)
-    ax.set_ylabel(ylabel, fontsize=14)
-    ax.tick_params(axis='both', which='major', labelsize=12)
-
-    if xlim_max is not None and ax.has_data():
-        ax.set_xticks(np.arange(0, xlim_max + 1, 15))
-        ax.set_xlim(left=0, right=xlim_max)
-
-    if ax.has_data():
-        handles, labels = ax.get_legend_handles_labels()
-        if handles:
-            sorted_legend = sorted(zip(labels, handles), key=lambda t: t[0])
-            labels_sorted, handles_sorted = zip(*sorted_legend)
-            ax.legend(handles_sorted, labels_sorted, loc=legend_loc, fontsize=11, framealpha=0.9, edgecolor='gray', fancybox=True)
-    
-    ax.grid(True, linestyle=':', alpha=0.7)
-    if ax.has_data():
-        ax.set_ylim(bottom=0)
-    plt.tight_layout(pad=1.5)
-
-def plot_average_latency_comparison(average_logs_dir: str, output_dir: str = DEFAULT_OUTPUT_DIR, metric_to_plot: str = 'experienced_latency_ms', max_time: float = None):
-    fig, ax = plt.subplots(figsize=(15, 7))
-    strategies_plotted = set()
-    window_size = 5
-    
-    logger.info(f"Searching for aggregated CSV files in: {average_logs_dir} to plot '{metric_to_plot}'")
-    if not os.path.isdir(average_logs_dir):
-        logger.error(f"Aggregated logs directory not found: {average_logs_dir}")
-        plt.close(fig)
+def plot_average_latency_comparison(
+    agg_dir: str,
+    output_dir: str = OUTPUT_DIR,
+    metric: str = "experienced_latency_ms",
+    max_time: float = None,
+):
+    if not os.path.isdir(agg_dir):
+        logger.error(f"Aggregated logs directory not found: {agg_dir}")
         return
-
-    all_data_frames = []
-    for filename in os.listdir(average_logs_dir):
-        if filename.startswith("log_") and "_average" in filename and filename.endswith(".csv"):
-            try:
-                df_temp = pd.read_csv(os.path.join(average_logs_dir, filename))
-                if 'sim_time_client' in df_temp.columns:
-                    all_data_frames.append(df_temp)
-            except Exception:
-                continue
-    
-    if max_time is None and all_data_frames:
-        max_sim_time = max(df['sim_time_client'].max() for df in all_data_frames if 'sim_time_client' in df.columns)
-        xlim_for_comparison_plot = max_sim_time
-    elif max_time is not None:
-        xlim_for_comparison_plot = max_time
-    else:
-        xlim_for_comparison_plot = 100
-    
-    logger.info(f"Generating comparison plot for time range: 0-{xlim_for_comparison_plot}s")
-
-    y_axis_label = "Average Latency (ms)"
-    plot_title_metric_part = f"Average {metric_to_plot.replace('_', ' ').replace('ms', '').strip().title()}"
-    if metric_to_plot == 'dynamic_best_server_latency':
-        plot_title_metric_part = "Average Optimal Server Latency"
-    main_plot_title = f"Comparison of {plot_title_metric_part}\nAcross Steering Strategies"
-
-    for filename in sorted(os.listdir(average_logs_dir)):
-        if not (filename.startswith("log_") and "_average" in filename and filename.endswith(".csv")):
+    entries: list[tuple[str, str, pd.DataFrame]] = []
+    for fn in sorted(os.listdir(agg_dir)):
+        if not (fn.startswith("log_") and "_average" in fn and fn.endswith(".csv")):
             continue
-        agg_file_path = os.path.join(average_logs_dir, filename)
-        logger.debug(f"Processing aggregated file for comparison: {filename}")
+        path = os.path.join(agg_dir, fn)
         try:
-            df_agg_full = pd.read_csv(agg_file_path)
-            df_agg = df_agg_full[df_agg_full['sim_time_client'] <= xlim_for_comparison_plot].copy()
-
-            if df_agg.empty or 'sim_time_client' not in df_agg.columns or metric_to_plot not in df_agg.columns:
-                logger.warning(f"File {filename} is empty or missing required columns. Skipping.")
+            df = pd.read_csv(path)
+            if "sim_time_client" not in df.columns or metric not in df.columns:
                 continue
+            fname = os.path.splitext(fn)[0]
+            strat = extract_strategy_from_filename(fname)
+            if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
+                strat = df["rl_strategy"].dropna().iloc[0]
+            entries.append((strat, fn, df))
+        except Exception:
+            continue
+    if not entries:
+        logger.warning("No aggregated files found for comparison.")
+        return
+    if max_time is None:
+        xlim = max(df["sim_time_client"].max() for _, _, df in entries)
+    else:
+        xlim = max_time
+    fig, ax = plt.subplots(figsize=(7.5, 4.0))
+    plotted = set()
 
-            df_agg = df_agg.sort_values(by='sim_time_client').copy()
-            filename_no_ext = os.path.splitext(filename)[0]
-            strategy_col_data = df_agg['rl_strategy'] if 'rl_strategy' in df_agg.columns else None
-            base_strategy_name = extract_strategy_name(filename_no_ext, strategy_col_data)
-            
-            if base_strategy_name in strategies_plotted:
-                logger.debug(f"Strategy '{base_strategy_name}' from {filename} already plotted. Skipping to avoid duplicates.")
-                continue
+    def _order(item):
+        sk = item[0]
+        try:
+            return STRATEGY_LEGEND_ORDER.index(sk)
+        except ValueError:
+            return len(STRATEGY_LEGEND_ORDER)
 
-            style = STRATEGY_STYLES.get(base_strategy_name, STRATEGY_STYLES["default"])
-            current_legend_label = style['label']
-
-            df_plot_data = df_agg.dropna(subset=['sim_time_client', metric_to_plot]).copy()
-            if not df_plot_data.empty:
-                y_values_to_plot = df_plot_data[metric_to_plot].rolling(
-                    window=window_size, center=True, min_periods=1).mean()
-                
-                ax.plot(df_plot_data['sim_time_client'], y_values_to_plot,
-                        linestyle='-', linewidth=2, alpha=0.9, color=style["color"], label=current_legend_label)
-                strategies_plotted.add(base_strategy_name)
-            else:
-                logger.warning(f"No valid data in {filename} for metric '{metric_to_plot}' to plot.")
-        except Exception as e:
-            logger.error(f"Error processing file {filename} for comparison: {e}", exc_info=True)
-
-    if not strategies_plotted:
-        logger.warning(f"No strategies were plotted for metric '{metric_to_plot}'. No graph will be generated.")
+    for strat_key, fn, df in sorted(entries, key=_order, reverse=True):
+        if strat_key in plotted:
+            continue
+        df = df[df["sim_time_client"] <= xlim].sort_values("sim_time_client").copy()
+        sub = df.dropna(subset=["sim_time_client", metric])
+        if sub.empty:
+            continue
+        style = get_strategy_style(strat_key)
+        y = sub[metric].rolling(WINDOW_SIZE, center=True, min_periods=1).mean()
+        ax.plot(
+            sub["sim_time_client"],
+            y,
+            color=style["color"],
+            linewidth=style["linewidth"],
+            linestyle=style["linestyle"],
+            alpha=style["alpha"],
+            zorder=style["zorder"],
+            label=style["label"],
+        )
+        std_col = metric + "_std_agg"
+        if std_col in df.columns:
+            std = (
+                df.loc[sub.index, std_col]
+                .rolling(WINDOW_SIZE, center=True, min_periods=1)
+                .mean()
+            )
+            ax.fill_between(
+                sub["sim_time_client"],
+                y - std,
+                y + std,
+                color=style["color"],
+                alpha=FILL_ALPHA,
+                linewidth=0,
+            )
+        plotted.add(strat_key)
+    if not plotted:
+        logger.warning("No data plotted for comparison.")
         plt.close(fig)
         return
+    nice_metric = metric.replace("_", " ").replace("ms", "").strip().title()
+    if metric == "dynamic_best_server_latency":
+        nice_metric = "Oracle Optimal Latency"
+    format_axes(
+        ax,
+        f"Strategy Comparison — Avg. {nice_metric}",
+        "Simulation Time (s)",
+        "Latency (ms)",
+        legend_loc="upper right",
+        xlim_max=xlim,
+    )
+    sort_legend_by_strategy(ax)
+    fig.tight_layout()
+    base = metric.replace("experienced_latency_ms", "latency")
+    save_figure(fig, os.path.join(output_dir, f"all_strategies_{base}_comparison"))
+    logger.info(f"Comparison plot saved to {output_dir}")
 
-    format_comparison_plot(ax,
-                           main_plot_title,
-                           "Average Simulation Time (s)",
-                           y_axis_label,
-                           legend_loc='best',
-                           xlim_max=xlim_for_comparison_plot)
 
-    output_filename_base = metric_to_plot.replace("experienced_latency_ms", "latency")
-    output_filename = f"all_strategies_{output_filename_base}_comparison.png"
-    plot_path = os.path.join(output_dir, output_filename)
-    os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(plot_path, dpi=300)
-    plt.close(fig)
-    logger.info(f"Comparison graph ({metric_to_plot}) saved to: {plot_path}")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Publication-ready comparison of strategy latencies."
+    )
+    parser.add_argument(
+        "--agg_dir", default=PROCESSED_DIR, help="Directory with aggregated CSV files."
+    )
+    parser.add_argument("--output_dir", default=OUTPUT_DIR)
+    parser.add_argument(
+        "--metric",
+        default="experienced_latency_ms",
+        choices=[
+            "experienced_latency_ms",
+            "experienced_latency_ms_CLIENT",
+            "dynamic_best_server_latency",
+        ],
+    )
+    parser.add_argument("--max_time", type=float, default=None)
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args()
+    apply_global_style()
+    configure_logger(logger, args.verbose)
+    plot_average_latency_comparison(
+        args.agg_dir, args.output_dir, metric=args.metric, max_time=args.max_time
+    )
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Compares average latency metrics from aggregated logs of different strategies.")
-    parser.add_argument("--agg_dir", type=str, default=DEFAULT_PROCESSED_LOGS_DIR,
-                        help=f"Directory with aggregated CSV files. Default: {DEFAULT_PROCESSED_LOGS_DIR}")
-    parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
-                        help=f"Directory to save the graph. Default: {DEFAULT_OUTPUT_DIR}")
-    parser.add_argument("--metric", type=str, default="experienced_latency_ms",
-                        choices=["experienced_latency_ms", "experienced_latency_ms_CLIENT", "dynamic_best_server_latency"],
-                        help="Latency metric to plot for comparison.")
-    parser.add_argument("--max_time", type=float, default=None,
-                        help="Maximum time (in seconds) to plot on x-axis. If not specified, uses max from data.")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
-    args = parser.parse_args()
-
-    _handler_compare = logging.StreamHandler()
-    log_level_to_set = logging.DEBUG if args.verbose else logging.INFO
-    _formatter_compare = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-    _handler_compare.setFormatter(_formatter_compare)
-    if not logger.handlers:
-        logger.addHandler(_handler_compare)
-    logger.setLevel(log_level_to_set)
-
-    logger.info(f"Logging level set to {logging.getLevelName(logger.getEffectiveLevel())}.")
-    logger.info(f"Starting strategy comparison (metric: {args.metric}) from logs in: {args.agg_dir}")
-    plot_average_latency_comparison(args.agg_dir, args.output_dir, metric_to_plot=args.metric, max_time=args.max_time)
+    main()
