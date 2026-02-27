@@ -10,7 +10,7 @@ logger = logging.getLogger("aggregate_logs")
 PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_RAW_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "raw")
 DEFAULT_PROCESSED_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "processed")
-MAX_AGGREGATION_TIME_SECONDS = 150
+MAX_AGGREGATION_TIME_SECONDS = 300
 os.makedirs(DEFAULT_PROCESSED_LOGS_DIR, exist_ok=True)
 EXPECTED_MAIN_NUMERIC_COLS = [
     "sim_time_client",
