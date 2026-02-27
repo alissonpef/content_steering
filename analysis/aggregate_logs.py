@@ -380,7 +380,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "strategy_name",
         type=str,
-        help="Base name of the strategy (e.g., ucb1, d_ucb, no_steering).",
+        help="Base name of the strategy (e.g., ucb1, epsilon_greedy, no_steering).",
     )
     parser.add_argument(
         "--suffix_pattern",
