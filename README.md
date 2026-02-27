@@ -62,7 +62,7 @@ Then place the `dataset` folder at the project root, like this:
 
 - `./dataset/Eldorado/4sec/avc/manifest.mpd`
 
-#### Installation (venv recommended)
+#### Installation
 
 At the project root:
 
@@ -149,7 +149,7 @@ Use 2 terminals.
 
 ### Terminal 1 — Steering service
 
-At the project root (with active venv):
+At the project root:
 
 ```bash
 python3 steering-service/src/app.py --strategy linucb
