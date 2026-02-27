@@ -9,7 +9,6 @@ This repository implements:
 - A Flask steering service with strategies:
   - `epsilon_greedy`
   - `ucb1`
-  - `d_ucb`
   - `linucb` (contextual bandit)
   - `oracle_best_choice`
   - `random`
@@ -158,7 +157,6 @@ python3 steering-service/src/app.py --strategy linucb
 Other available strategies:
 
 ```bash
-python3 steering-service/src/app.py --strategy d_ucb
 python3 steering-service/src/app.py --strategy ucb1
 python3 steering-service/src/app.py --strategy epsilon_greedy
 python3 steering-service/src/app.py --strategy oracle_best_choice
@@ -192,6 +190,7 @@ Current scenarios:
 1. Baseline (static)
 2. Mobility (spatial movement)
 3. Latency Shock / Spam (temporal event)
+4. Extreme Latency Shock (+1000x)
 
 Example (run everything, 1 repetition per combination):
 
@@ -202,7 +201,7 @@ python3 run_scenarios.py
 Additional examples:
 
 ```bash
-python3 run_scenarios.py --strategies linucb d_ucb ucb1 --runs 3
+python3 run_scenarios.py --strategies linucb ucb1 epsilon_greedy --runs 3
 python3 run_scenarios.py --scenarios 1 2 --runs 2
 python3 run_scenarios.py --skip-analysis
 python3 run_scenarios.py --skip-docker
@@ -213,6 +212,7 @@ Log output by scenario:
 - `logs/raw/baseline/`
 - `logs/raw/mobility/`
 - `logs/raw/spam/`
+- `logs/raw/spam_extreme/`
 
 ## Analysis Pipeline
 ### 1) Aggregate logs by strategy
@@ -265,7 +265,8 @@ Content-steering/
 │   ├── raw/
 │   │   ├── baseline/
 │   │   ├── mobility/
-│   │   └── spam/
+│   │   ├── spam/
+│   │   └── spam_extreme/
 │   └── processed/
 ├── analysis/
 ├── steering-service/
