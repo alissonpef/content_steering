@@ -41,10 +41,13 @@ def find_dynamic_best_server_and_latency_for_agg(row_series):
         )
     try:
         raw_latencies = json.loads(row_series["all_servers_oracle_latency_json"])
+        normalized_latencies = {
+            k.replace("-", "_"): v for k, v in raw_latencies.items()
+        }
         valid_server_latencies = {
-            s_key_underscore: lat
-            for s_key_underscore, lat in raw_latencies.items()
-            if s_key_underscore in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE
+            s_key: lat
+            for s_key, lat in normalized_latencies.items()
+            if s_key in KNOWN_CACHE_SERVER_KEYS_UNDERSCORE
             and isinstance(lat, (int, float))
         }
         if not valid_server_latencies:
