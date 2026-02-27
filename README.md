@@ -127,7 +127,7 @@ This script generates certificates for:
 At the project root:
 
 ```bash
-./starting_streaming.sh
+sudo ./starting_streaming.sh
 ```
 
 The script:
@@ -139,7 +139,7 @@ The script:
 To stop:
 
 ```bash
-./stop_streaming.sh
+sudo ./stop_streaming.sh
 ```
 
 ## Manual Execution (Interactive Mode)
