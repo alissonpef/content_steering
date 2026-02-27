@@ -1,10 +1,8 @@
 from .base import Selector
-
 class OracleBestChoiceSelector(Selector):
     def __init__(self, monitor=None, latency_oracle=None):
         if latency_oracle is None: raise ValueError("OracleBestChoiceSelector requires DynamicLatencyOracle.")
         super().__init__(monitor=monitor, latency_oracle=latency_oracle)
-
     def select_arm(self, **kwargs) -> list:
         if not self.latency_oracle:
             return sorted(list(self.nodes)) if self.nodes else []
