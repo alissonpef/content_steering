@@ -1,196 +1,431 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Content Steering - Simulation Interface</title>
     <script src="./assets/js/dash.all.debug.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <link href="./assets/css/bootstrap.min.css" rel="stylesheet" />
     <link href="./assets/css/style.css" rel="stylesheet" />
     <style>
-      video { width: 100%; max-width: 640px; height: auto; background-color: black; }
-      figure.cdn-selection { margin: 0 10px 0 0; display: inline-block; vertical-align: top;}
-      img.cdn-selection { width: 50px; }
-      .figure-caption { text-align: center; font-size: 0.75em; }
-      #cdn-selection-container { margin: 5px 0 15px 0; min-height: 70px;}
-      .table td, .table th { font-size: 0.85em; padding: 0.4rem; }
-      pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8em; max-height: 100px; overflow-y: auto; }
-      .simulation-controls label { margin-right: 5px; }
-      .simulation-controls input, .simulation-controls select { margin-bottom: 10px; }
-      .simulation-controls .form-select, .simulation-controls .form-control-sm { margin-right: 5px;}
+      video {
+        width: 100%;
+        max-width: 640px;
+        height: auto;
+        background-color: black;
+      }
+      figure.cdn-selection {
+        margin: 0 10px 0 0;
+        display: inline-block;
+        vertical-align: top;
+      }
+      img.cdn-selection {
+        width: 50px;
+      }
+      .figure-caption {
+        text-align: center;
+        font-size: 0.75em;
+      }
+      #cdn-selection-container {
+        margin: 5px 0 15px 0;
+        min-height: 70px;
+      }
+      .table td,
+      .table th {
+        font-size: 0.85em;
+        padding: 0.4rem;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 0.8em;
+        max-height: 100px;
+        overflow-y: auto;
+      }
+      .simulation-controls label {
+        margin-right: 5px;
+      }
+      .simulation-controls input,
+      .simulation-controls select {
+        margin-bottom: 10px;
+      }
+      .simulation-controls .form-select,
+      .simulation-controls .form-control-sm {
+        margin-right: 5px;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <main>
       <div class="container py-4">
         <header class="pb-3 mb-4 border-bottom">
-          <img src="./assets/img/dashjs-logo.png" width="180" alt="DASH-IF Logo"/>
-          <h4 style="display: inline-block; margin-left: 20px; vertical-align: middle;">Simulation Interface (CSV Data Focus)</h4>
+          <img
+            src="./assets/img/dashjs-logo.png"
+            width="180"
+            alt="DASH-IF Logo"
+          />
+          <h4
+            style="
+              display: inline-block;
+              margin-left: 20px;
+              vertical-align: middle;
+            "
+          >
+            Simulation Interface (CSV Data Focus)
+          </h4>
         </header>
-
         <div class="row mt-2 mb-3 p-3 border rounded-3 simulation-controls">
-
-
-            <!-- Simulation Setup -->
-            <div class="col-12 mb-3 pb-3 border-bottom">
-                <h5>Simulation Setup</h5>
-                <div class="row align-items-center mb-2">
-                    <div class="col-md-5">
-                        <label class="me-2">Run Mode:</label>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="runMode" id="modeDuration" value="duration" checked>
-                            <label class="form-check-label" for="modeDuration">Duration (s)</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="runMode" id="modeLoops" value="loops">
-                            <label class="form-check-label" for="modeLoops">Video Loops</label>
-                        </div>
-                    </div>
-                    
-                    <!-- Duration Input Group -->
-                    <div class="col-md-4" id="durationInputGroup">
-                        <label for="simDuration">Total Duration (s):</label>
-                        <input type="number" id="simDuration" value="180" class="form-control form-control-sm d-inline-block" style="width: 80px;">
-                    </div>
-
-                    <!-- Loops Input Group (Hidden by default) -->
-                    <div class="col-md-4" id="loopsInputGroup" style="display: none;">
-                        <label for="simLoops">Number of Loops:</label>
-                        <input type="number" id="simLoops" value="1" min="1" class="form-control form-control-sm d-inline-block" style="width: 60px;">
-                        <span id="calculatedDurationInfo" class="text-muted small ms-2">(Load video first)</span>
-                    </div>
+          <div class="col-12 mb-3 pb-3 border-bottom">
+            <h5>Simulation Setup</h5>
+            <div class="row align-items-center mb-2">
+              <div class="col-md-5">
+                <label class="me-2">Run Mode:</label>
+                <div class="form-check form-check-inline">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="runMode"
+                    id="modeDuration"
+                    value="duration"
+                    checked
+                  />
+                  <label class="form-check-label" for="modeDuration"
+                    >Duration (s)</label
+                  >
                 </div>
-                <div class="row align-items-center mb-2">
-                    <div class="col-md-12">
-                        <label for="simRuns">Number of Runs:</label>
-                        <input type="number" id="simRuns" value="1" min="1" class="form-control form-control-sm d-inline-block" style="width: 60px;">
-                        <span id="runIndicator" class="badge bg-info text-dark ms-2" style="display: none;">Run 0/0</span>
-                    </div>
+                <div class="form-check form-check-inline">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="runMode"
+                    id="modeLoops"
+                    value="loops"
+                  />
+                  <label class="form-check-label" for="modeLoops"
+                    >Video Loops</label
+                  >
                 </div>
-                <div class="row align-items-center">
-                    <div class="col-md-12">
-                        <label for="initialSimLat">Initial Position: Lat:</label>
-                        <input type="number" step="any" id="initialSimLat" value="-23.0" class="form-control form-control-sm d-inline-block" style="width: 90px;">
-                        <label for="initialSimLon" class="ms-2">Lon:</label>
-                        <input type="number" step="any" id="initialSimLon" value="-47.0" class="form-control form-control-sm d-inline-block" style="width: 90px;">
-                    </div>
-                </div>
+              </div>
+              <div class="col-md-4" id="durationInputGroup">
+                <label for="simDuration">Total Duration (s):</label>
+                <input
+                  type="number"
+                  id="simDuration"
+                  value="180"
+                  class="form-control form-control-sm d-inline-block"
+                  style="width: 80px"
+                />
+              </div>
+              <div class="col-md-4" id="loopsInputGroup" style="display: none">
+                <label for="simLoops">Number of Loops:</label>
+                <input
+                  type="number"
+                  id="simLoops"
+                  value="1"
+                  min="1"
+                  class="form-control form-control-sm d-inline-block"
+                  style="width: 60px"
+                />
+                <span id="calculatedDurationInfo" class="text-muted small ms-2"
+                  >(Load video first)</span
+                >
+              </div>
             </div>
-
-            <!-- Events Configuration -->
-            <div class="col-12">
-                <div class="row">
-                    <!-- Movement Event -->
-                    <div class="col-md-4 border-end">
-                        <h6 class="text-primary">Movement Event</h6>
-                        <div class="mb-2">
-                            <label for="simMovementTarget" class="d-block">Target:</label>
-                            <select id="simMovementTarget" class="form-select form-select-sm w-100">
-                                <option value="none">Stay Still</option>
-                            </select>
-                        </div>
-                        <div class="mb-2">
-                            <label for="simMovementStartTime">Start (s):</label>
-                            <input type="number" id="simMovementStartTime" value="45" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                        <div class="mb-2">
-                            <label for="simMovementDuration">Duration (s):</label>
-                            <input type="number" id="simMovementDuration" value="60" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                    </div>
-
-                    <!-- Spam Cache 1 -->
-                    <div class="col-md-4 border-end">
-                        <h6 class="text-danger">Spam Cache 1</h6>
-                        <div class="mb-2">
-                            <label for="simSpamTarget_1" class="d-block">Target:</label>
-                            <select id="simSpamTarget_1" class="form-select form-select-sm w-100">
-                                <option value="none">No Spam</option>
-                            </select>
-                        </div>
-                        <div class="mb-2">
-                            <label for="simSpamStartTime_1">Start (s):</label>
-                            <input type="number" id="simSpamStartTime_1" value="45" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                        <div class="mb-2">
-                            <label for="simSpamDuration_1">Duration (s):</label>
-                            <input type="number" id="simSpamDuration_1" value="135" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                    </div>
-
-                    <!-- Spam Cache 2 -->
-                    <div class="col-md-4">
-                        <h6 class="text-danger">Spam Cache 2</h6>
-                        <div class="mb-2">
-                            <label for="simSpamTarget_2" class="d-block">Target:</label>
-                            <select id="simSpamTarget_2" class="form-select form-select-sm w-100">
-                                <option value="none">No Spam</option>
-                            </select>
-                        </div>
-                        <div class="mb-2">
-                            <label for="simSpamStartTime_2">Start (s):</label>
-                            <input type="number" id="simSpamStartTime_2" value="105" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                        <div class="mb-2">
-                            <label for="simSpamDuration_2">Duration (s):</label>
-                            <input type="number" id="simSpamDuration_2" value="75" class="form-control form-control-sm d-inline-block w-100">
-                        </div>
-                    </div>
+            <div class="row align-items-center mb-2">
+              <div class="col-md-12">
+                <label for="simRuns">Number of Runs:</label>
+                <input
+                  type="number"
+                  id="simRuns"
+                  value="1"
+                  min="1"
+                  class="form-control form-control-sm d-inline-block"
+                  style="width: 60px"
+                />
+                <span
+                  id="runIndicator"
+                  class="badge bg-info text-dark ms-2"
+                  style="display: none"
+                  >Run 0/0</span
+                >
+              </div>
+            </div>
+            <div class="row align-items-center">
+              <div class="col-md-12">
+                <label for="initialSimLat">Initial Position: Lat:</label>
+                <input
+                  type="number"
+                  step="any"
+                  id="initialSimLat"
+                  value="-23.0"
+                  class="form-control form-control-sm d-inline-block"
+                  style="width: 90px"
+                />
+                <label for="initialSimLon" class="ms-2">Lon:</label>
+                <input
+                  type="number"
+                  step="any"
+                  id="initialSimLon"
+                  value="-47.0"
+                  class="form-control form-control-sm d-inline-block"
+                  style="width: 90px"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="row">
+              <div class="col-md-4 border-end">
+                <h6 class="text-primary">Movement Event</h6>
+                <div class="mb-2">
+                  <label for="simMovementTarget" class="d-block">Target:</label>
+                  <select
+                    id="simMovementTarget"
+                    class="form-select form-select-sm w-100"
+                  >
+                    <option value="none">Stay Still</option>
+                  </select>
                 </div>
+                <div class="mb-2">
+                  <label for="simMovementStartTime">Start (s):</label>
+                  <input
+                    type="number"
+                    id="simMovementStartTime"
+                    value="45"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label for="simMovementDuration">Duration (s):</label>
+                  <input
+                    type="number"
+                    id="simMovementDuration"
+                    value="60"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+              </div>
+              <div class="col-md-4 border-end">
+                <h6 class="text-danger">Spam Cache 1</h6>
+                <div class="mb-2">
+                  <label for="simSpamTarget_1" class="d-block">Target:</label>
+                  <select
+                    id="simSpamTarget_1"
+                    class="form-select form-select-sm w-100"
+                  >
+                    <option value="none">No Spam</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label for="simSpamStartTime_1">Start (s):</label>
+                  <input
+                    type="number"
+                    id="simSpamStartTime_1"
+                    value="45"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label for="simSpamDuration_1">Duration (s):</label>
+                  <input
+                    type="number"
+                    id="simSpamDuration_1"
+                    value="135"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+              </div>
+              <div class="col-md-4">
+                <h6 class="text-danger">Spam Cache 2</h6>
+                <div class="mb-2">
+                  <label for="simSpamTarget_2" class="d-block">Target:</label>
+                  <select
+                    id="simSpamTarget_2"
+                    class="form-select form-select-sm w-100"
+                  >
+                    <option value="none">No Spam</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label for="simSpamStartTime_2">Start (s):</label>
+                  <input
+                    type="number"
+                    id="simSpamStartTime_2"
+                    value="105"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label for="simSpamDuration_2">Duration (s):</label>
+                  <input
+                    type="number"
+                    id="simSpamDuration_2"
+                    value="75"
+                    class="form-control form-control-sm d-inline-block w-100"
+                  />
+                </div>
+              </div>
             </div>
-
-            <!-- Control Buttons -->
-            <div class="col-md-12 mt-3 pt-3 border-top">
-                <button type="button" id="button_StartControlledSim" class="btn btn-success btn-sm me-2" disabled>Start Simulation</button>
-                <button type="button" id="button_StopSim" class="btn btn-danger btn-sm me-2" disabled>Stop Simulation</button>
-                <button type="button" id="button_ResetSimUI" class="btn btn-warning btn-sm">Reset UI & Sim State</button>
-            </div>
+          </div>
+          <div class="col-md-12 mt-3 pt-3 border-top">
+            <button
+              type="button"
+              id="button_StartControlledSim"
+              class="btn btn-success btn-sm me-2"
+              disabled
+            >
+              Start Simulation
+            </button>
+            <button
+              type="button"
+              id="button_StopSim"
+              class="btn btn-danger btn-sm me-2"
+              disabled
+            >
+              Stop Simulation
+            </button>
+            <button
+              type="button"
+              id="button_ResetSimUI"
+              class="btn btn-warning btn-sm"
+            >
+              Reset UI & Sim State
+            </button>
+          </div>
         </div>
-
         <div class="row">
           <div class="col-md-7">
             <div class="input-group mb-2">
-              <input type="text" id="manifest" class="form-control form-control-sm" placeholder="MPD URL" value="https://video-streaming-cache-1/Eldorado/4sec/avc/manifest.mpd"/>
-              <button type="button" id="load-button" class="btn btn-primary btn-sm">Load MPD</button>
+              <input
+                type="text"
+                id="manifest"
+                class="form-control form-control-sm"
+                placeholder="MPD URL"
+                value="https://video-streaming-cache-1/Eldorado/4sec/avc/manifest.mpd"
+              />
+              <button
+                type="button"
+                id="load-button"
+                class="btn btn-primary btn-sm"
+              >
+                Load MPD
+              </button>
             </div>
             <div class="form-check mb-2">
-                <input class="form-check-input" type="checkbox" value="" id="autoStartCheckbox">
-                <label class="form-check-label" for="autoStartCheckbox" style="font-size: 0.9em;">
-                    Auto-start simulation on MPD load
-                </label>
+              <input
+                class="form-check-input"
+                type="checkbox"
+                value=""
+                id="autoStartCheckbox"
+              />
+              <label
+                class="form-check-label"
+                for="autoStartCheckbox"
+                style="font-size: 0.9em"
+              >
+                Auto-start simulation on MPD load
+              </label>
             </div>
             <video controls="true" muted="true" preload="metadata"></video>
-             <div class="mt-2">
-                Sim Time: <span id="simCurrentTimeDisplay">0</span>s <br>
-                Client Pos: Lat <input type="text" id="current-latitude" class="form-control-sm" style="width:90px;" readonly/>,
-                Lon <input type="text" id="current-longitude" class="form-control-sm" style="width:90px;" readonly /> <br>
-                Movement: <span id="simMovementStatus">Inactive</span> <br>
-                Spam 1: <span id="simSpamStatus_1">Inactive</span> | Spam 2: <span id="simSpamStatus_2">Inactive</span>
+            <div class="mt-2">
+              Sim Time: <span id="simCurrentTimeDisplay">0</span>s <br />
+              Client Pos: Lat
+              <input
+                type="text"
+                id="current-latitude"
+                class="form-control-sm"
+                style="width: 90px"
+                readonly
+              />, Lon
+              <input
+                type="text"
+                id="current-longitude"
+                class="form-control-sm"
+                style="width: 90px"
+                readonly
+              />
+              <br />
+              Movement: <span id="simMovementStatus">Inactive</span> <br />
+              Spam 1: <span id="simSpamStatus_1">Inactive</span> | Spam 2:
+              <span id="simSpamStatus_2">Inactive</span>
             </div>
           </div>
           <div class="col-md-5">
-            <div class="p-2 border rounded-3" style="max-height: 450px; overflow-y: auto;">
+            <div
+              class="p-2 border rounded-3"
+              style="max-height: 450px; overflow-y: auto"
+            >
               <h6>CDN Selection (Active for Segments)</h6>
               <div id="cdn-selection-container"></div>
-              <h6 style="margin-top: 10px;">Steering Decision (Priority)</h6>
-              <div id="steering-decision-display" style="font-size:0.8em; padding:5px; background-color:#f8f9fa; border-radius:3px;">N/A</div>
-               <h6 style="margin-top: 10px;">Steering Service Raw Data</h6>
+              <h6 style="margin-top: 10px">Steering Decision (Priority)</h6>
+              <div
+                id="steering-decision-display"
+                style="
+                  font-size: 0.8em;
+                  padding: 5px;
+                  background-color: #f8f9fa;
+                  border-radius: 3px;
+                "
+              >
+                N/A
+              </div>
+              <h6 style="margin-top: 10px">Steering Service Raw Data</h6>
               <div class="table-responsive">
                 <table class="table table-sm">
-                   <tbody>
-                    <tr><td>Timestamp</td><td id="steering-request-timestamp">N/A</td></tr>
-                    <tr><td>Req URL</td><td><span id="steering-request-url" style="word-break: break-all;">N/A</span></td></tr>
-                    <tr><td>Clones</td><td><pre><span id="steering-pathway-cloning">N/A</span></pre></td></tr>
+                  <tbody>
+                    <tr>
+                      <td>Timestamp</td>
+                      <td id="steering-request-timestamp">N/A</td>
+                    </tr>
+                    <tr>
+                      <td>Req URL</td>
+                      <td>
+                        <span
+                          id="steering-request-url"
+                          style="word-break: break-all"
+                          >N/A</span
+                        >
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Clones</td>
+                      <td>
+                        <pre><span id="steering-pathway-cloning">N/A</span></pre>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
         </div>
-        <footer class="pt-3 mt-4 text-muted border-top">Simulation Interface (CSV Data Focus)</footer>
+        <div class="row mt-3 mb-3" id="chartDashboardRow">
+          <div class="col-12">
+            <div class="p-3 border rounded-3">
+              <h5 class="mb-3">Real-Time Analytics Dashboard</h5>
+              <div class="row">
+                <div class="col-md-7">
+                  <h6 class="text-muted text-center" style="font-size: 0.85em">
+                    Oracle Latency per Server (ms)
+                  </h6>
+                  <canvas id="chartLatency" height="180"></canvas>
+                </div>
+                <div class="col-md-5">
+                  <h6 class="text-muted text-center" style="font-size: 0.85em">
+                    Steering Decision (Server Choice)
+                  </h6>
+                  <canvas id="chartServerChoice" height="180"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="pt-3 mt-4 text-muted border-top">
+          Simulation Interface (CSV Data Focus)
+        </footer>
       </div>
     </main>
-
     <script src="./assets/js/config.js"></script>
     <script src="./assets/js/main.js"></script>
-</body>
+  </body>
 </html>
