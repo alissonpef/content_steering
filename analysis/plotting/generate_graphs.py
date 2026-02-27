@@ -32,6 +32,7 @@ ACTUAL_CACHE_NAMES_HYPHEN = [
     "video-streaming-cache-2",
     "video-streaming-cache-3",
 ]
+MAX_PLOT_TIME_SECONDS = 300
 
 
 def parse_json_column(series: pd.Series, prefix: str = "") -> pd.DataFrame:
@@ -69,7 +70,7 @@ def find_dynamic_best(row):
         return None, np.nan
 
 
-def generate_plots(csv_path: str):
+def generate_plots(csv_path: str, max_time: float = None):
     if not os.path.exists(csv_path):
         logger.error(f"CSV not found: {csv_path}")
         return
@@ -82,6 +83,12 @@ def generate_plots(csv_path: str):
         return
     df.sort_values("sim_time_client", inplace=True)
     df.reset_index(drop=True, inplace=True)
+    if max_time is not None:
+        df = df[df["sim_time_client"] <= max_time].copy()
+        if df.empty:
+            logger.warning(f"No data ≤ {max_time}s in {csv_path}")
+            return
+    xlim = float(df["sim_time_client"].max()) if "sim_time_client" in df.columns else None
     strat_key = "N/A"
     if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
         strat_key = df["rl_strategy"].dropna().iloc[0]
@@ -130,6 +137,7 @@ def generate_plots(csv_path: str):
             custom_handles=handles,
             custom_labels=labels,
             legend_loc="upper right",
+            xlim_max=xlim,
         )
         fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "1_latency_chosen_vs_optimal"))
@@ -188,6 +196,7 @@ def generate_plots(csv_path: str):
             custom_handles=h2,
             custom_labels=l2,
             legend_loc="upper right",
+            xlim_max=xlim,
         )
         fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "2_steering_decisions"))
@@ -230,6 +239,7 @@ def generate_plots(csv_path: str):
                 "Simulation Time (s)",
                 ylabel,
                 legend_loc="upper right",
+                xlim_max=xlim,
             )
             fig.tight_layout()
             save_figure(fig, os.path.join(img_dir, "3_rl_estimated_values"))
@@ -274,6 +284,7 @@ def generate_plots(csv_path: str):
                 "Simulation Time (s)",
                 ylabel4,
                 legend_loc="upper left",
+                xlim_max=xlim,
             )
             fig.tight_layout()
             save_figure(fig, os.path.join(img_dir, "4_rl_selection_counts"))
@@ -309,6 +320,7 @@ def generate_plots(csv_path: str):
                 "Simulation Time (s)",
                 "Simulated Latency (ms)",
                 legend_loc="upper right",
+                xlim_max=xlim,
             )
             fig.tight_layout()
             save_figure(fig, os.path.join(img_dir, "5_oracle_latency_landscape"))
@@ -337,6 +349,12 @@ def main():
         default=None,
         help="CSV path or filename (searched in standard dirs).",
     )
+    parser.add_argument(
+        "--max_time",
+        type=float,
+        default=None,
+        help="Optional max simulation time (seconds). If omitted, uses data max time.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     apply_global_style()
@@ -344,7 +362,7 @@ def main():
     if args.csv_argument:
         path = _resolve_csv(args.csv_argument)
         if path:
-            generate_plots(path)
+            generate_plots(path, max_time=args.max_time)
         else:
             logger.error(f"File not found: {args.csv_argument}")
     else:
@@ -356,7 +374,7 @@ def main():
                     and fn.endswith(".csv")
                     and "_average" not in fn
                 ):
-                    generate_plots(os.path.join(RAW_LOGS_DIR, fn))
+                    generate_plots(os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time)
 
 
 if __name__ == "__main__":
