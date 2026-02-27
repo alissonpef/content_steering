@@ -168,6 +168,7 @@ class _TCPConnectionSimulator:
 
 class DynamicLatencyOracle:
     SPEED_OF_LIGHT_FIBER_KMS = 200_000
+    DEFAULT_EVENT_FACTOR = 30.0
     DEFAULT_INITIAL_CLIENT_LAT = -23.0
     DEFAULT_INITIAL_CLIENT_LON = -47.0
     _NORM_LATENCY_MS = 300.0
@@ -181,28 +182,38 @@ class DynamicLatencyOracle:
         "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
     }
 
-    def __init__(self, monitor, update_interval_seconds: int = 2):
+    def __init__(
+        self,
+        monitor,
+        update_interval_seconds: int = 2,
+        enable_time_of_day_effects: bool = False,
+        enable_micro_bursts: bool = False,
+        enable_route_flapping: bool = False,
+        enable_retransmission_penalty: bool = False,
+        enable_queue_delay: bool = False,
+        enable_backbone_congestion: bool = False,
+    ):
         self.monitor = monitor
         self.server_latencies: dict[str, float] = {}
         self.server_base_latencies_config = {
             "video-streaming-cache-1": 52,
-            "video-streaming-cache-2": 56,
-            "video-streaming-cache-3": 72,
+            "video-streaming-cache-2": 62,
+            "video-streaming-cache-3": 74,
         }
         self.server_base_jitter_config = {
             "video-streaming-cache-1": 5,
-            "video-streaming-cache-2": 6,
-            "video-streaming-cache-3": 7,
+            "video-streaming-cache-2": 7,
+            "video-streaming-cache-3": 9,
         }
         self.server_base_packet_loss_config = {
-            "video-streaming-cache-1": 0.002,
-            "video-streaming-cache-2": 0.003,
-            "video-streaming-cache-3": 0.005,
+            "video-streaming-cache-1": 0.003,
+            "video-streaming-cache-2": 0.005,
+            "video-streaming-cache-3": 0.007,
         }
         self.server_peering_quality = {
-            "video-streaming-cache-1": 1.0,
+            "video-streaming-cache-1": 1.15,
             "video-streaming-cache-2": 1.30,
-            "video-streaming-cache-3": 1.40,
+            "video-streaming-cache-3": 1.45,
         }
         self.server_geo_coords: dict = {}
         self.client_latitude = self.DEFAULT_INITIAL_CLIENT_LAT
@@ -212,7 +223,7 @@ class DynamicLatencyOracle:
         self.lock = threading.RLock()
         self.running = False
         self.thread = None
-        self.min_simulated_latency = 45.0
+        self.min_simulated_latency = 30
         self.movement_smoothing_factor = 0.35
         self._jitter_processes: dict[str, _OrnsteinUhlenbeckProcess] = {}
         self._micro_burst_gens: dict[str, _MicroBurstGenerator] = {}
@@ -236,6 +247,12 @@ class DynamicLatencyOracle:
         self._backbone_congestion: dict[str, float] = {}
         self._last_diurnal_time = 0.0
         self._cached_diurnal_mult = 1.0
+        self.enable_time_of_day_effects = bool(enable_time_of_day_effects)
+        self.enable_micro_bursts = bool(enable_micro_bursts)
+        self.enable_route_flapping = bool(enable_route_flapping)
+        self.enable_retransmission_penalty = bool(enable_retransmission_penalty)
+        self.enable_queue_delay = bool(enable_queue_delay)
+        self.enable_backbone_congestion = bool(enable_backbone_congestion)
         self._update_server_geo_coordinates()
 
     def _update_server_geo_coordinates(self):
@@ -413,12 +430,17 @@ class DynamicLatencyOracle:
             mod_factor = 1.0
             if self.server_event_modifiers.get(server_name) != (1.0, 0):
                 self.server_event_modifiers[server_name] = (1.0, 0)
-        diurnal_mult = self._get_diurnal_multiplier()
-        burst_mult = self._get_burst_multiplier(server_name)
-        micro_burst_mult = self._micro_burst_gens[server_name].get_multiplier()
-        combined_mod = min(
-            4.0, mod_factor * diurnal_mult * burst_mult * micro_burst_mult
+        diurnal_mult = (
+            self._get_diurnal_multiplier() if self.enable_time_of_day_effects else 1.0
         )
+        burst_mult = self._get_burst_multiplier(server_name)
+        micro_burst_mult = (
+            self._micro_burst_gens[server_name].get_multiplier()
+            if self.enable_micro_bursts
+            else 1.0
+        )
+        background_mod = min(4.0, diurnal_mult * burst_mult * micro_burst_mult)
+        combined_mod = mod_factor * background_mod
         distance_km = 0.0
         if self.client_latitude is not None and self.client_longitude is not None:
             sc = self.server_geo_coords.get(server_name)
@@ -440,14 +462,30 @@ class DynamicLatencyOracle:
         jitter_amp = 1.0 + (combined_mod - 1.0) * 0.4
         dist_jitter = 1.0 + (distance_km / 2000.0) * 0.15
         jitter_mag = abs(ou_sample) * jitter_amp * dist_jitter
-        queue_ms = self._compute_queue_delay_ms(server_name)
+        queue_ms = (
+            self._compute_queue_delay_ms(server_name)
+            if self.enable_queue_delay
+            else 0.0
+        )
         base_rtt = propagation_ms + base_latency
         tcp_ms = self._tcp_sim.get_penalty_ms(server_name, base_rtt)
-        flap_ms = self._route_flap_sims[server_name].get_penalty_ms()
-        backbone_f = self._get_backbone_factor(server_name)
+        flap_ms = (
+            self._route_flap_sims[server_name].get_penalty_ms()
+            if self.enable_route_flapping
+            else 0.0
+        )
+        backbone_f = (
+            self._get_backbone_factor(server_name)
+            if self.enable_backbone_congestion
+            else 1.0
+        )
         base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
         eff_loss = min(0.3, base_loss * combined_mod * backbone_f)
-        retx_ms = self._compute_retransmission_penalty(base_rtt, eff_loss)
+        retx_ms = (
+            self._compute_retransmission_penalty(base_rtt, eff_loss)
+            if self.enable_retransmission_penalty
+            else 0.0
+        )
         latency_estimate = (
             propagation_ms + distance_penalty_ms + server_load * backbone_f
         )
@@ -515,7 +553,10 @@ class DynamicLatencyOracle:
     def _update_latencies(self):
         self._initialize_server_states()
         with self.lock:
-            self._update_backbone_congestion()
+            if self.enable_backbone_congestion:
+                self._update_backbone_congestion()
+            else:
+                self._backbone_congestion.clear()
             for name in list(self.server_latencies):
                 _, lat = self._compute_latency_internal(name)
                 self.server_latencies[name] = lat
