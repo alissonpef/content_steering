@@ -19,7 +19,7 @@ class EpsilonGreedy(Selector):
     def initialize(self, arms_names: list):
         super().initialize(arms_names)
         new_counts = {arm: self.counts.get(arm, 0) for arm in self.nodes}
-        new_values = {arm: self.values.get(arm, float("inf")) for arm in self.nodes}
+        new_values = {arm: self.values.get(arm, float("-inf")) for arm in self.nodes}
         self.counts = new_counts
         self.values = new_values
 
@@ -43,14 +43,18 @@ class EpsilonGreedy(Selector):
                 return [chosen_unvisited]
             if random.random() > self.epsilon:
                 sorted_remaining = sorted(
-                    other_nodes, key=lambda node: self.values.get(node, float("inf"))
+                    other_nodes,
+                    key=lambda node: self.values.get(node, float("-inf")),
+                    reverse=True,
                 )
             else:
                 sorted_remaining = random.sample(other_nodes, len(other_nodes))
             return [chosen_unvisited] + sorted_remaining
         if random.random() > self.epsilon:
             return sorted(
-                list(self.nodes), key=lambda node: self.values.get(node, float("inf"))
+                list(self.nodes),
+                key=lambda node: self.values.get(node, float("-inf")),
+                reverse=True,
             )
         else:
             return random.sample(self.nodes, len(self.nodes))
@@ -75,13 +79,13 @@ class EpsilonGreedy(Selector):
         if str_arm not in self.counts:
             self.counts[str_arm] = 0
         if str_arm not in self.values:
-            self.values[str_arm] = float("inf")
+            self.values[str_arm] = float("-inf")
         self.counts[str_arm] += 1
         n = self.counts[str_arm]
-        current_avg_latency = self.values[str_arm]
-        if current_avg_latency == float("inf"):
+        current_avg_reward = self.values[str_arm]
+        if current_avg_reward == float("-inf"):
             self.values[str_arm] = float(feedback_value)
         else:
             self.values[str_arm] = (
-                (n - 1) * current_avg_latency + float(feedback_value)
+                (n - 1) * current_avg_reward + float(feedback_value)
             ) / n
