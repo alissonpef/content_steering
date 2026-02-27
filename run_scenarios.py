@@ -26,26 +26,48 @@ ALGORITHMS: list[str] = [
     "oracle_best_choice",
     "random",
 ]
-SCENARIO_DURATION = 300
-DEFAULT_RUNS = 10
+SCENARIO_DURATION = 120
+DEFAULT_RUNS = 1
 INIT_LAT, INIT_LON = -23.0, -47.0
 CACHE_COORDS = {
     "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
     "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
     "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
 }
-MOBILITY_START = 120
-MOBILITY_END = 180
+MOBILITY_START = 45
+MOBILITY_END = 75
 MOBILITY_TARGET = "video-streaming-cache-2"
 SPAM_SERVER = "video-streaming-cache-1"
-SPAM_START = 120
-SPAM_DURATION = 60
+SPAM_START = 45
+SPAM_DURATION = 30
 SPAM_FACTOR = 15.0
 STARTUP_WAIT = 5
 SERVICE_POLL_TIMEOUT = 30
 TICK_INTERVAL = 1.0
 INTER_RUN_PAUSE = 2
 INTER_STRATEGY_PAUSE = 3
+
+# SCENARIO_DURATION = 300
+# DEFAULT_RUNS = 10
+# INIT_LAT, INIT_LON = -23.0, -47.0
+# CACHE_COORDS = {
+#     "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
+#     "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
+#     "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
+# }
+# MOBILITY_START = 120
+# MOBILITY_END = 180
+# MOBILITY_TARGET = "video-streaming-cache-2"
+# SPAM_SERVER = "video-streaming-cache-1"
+# SPAM_START = 120
+# SPAM_DURATION = 60
+# SPAM_FACTOR = 15.0
+# STARTUP_WAIT = 5
+# SERVICE_POLL_TIMEOUT = 30
+# TICK_INTERVAL = 1.0
+# INTER_RUN_PAUSE = 2
+# INTER_STRATEGY_PAUSE = 3
+
 logger = logging.getLogger("ScenarioRunner")
 
 
