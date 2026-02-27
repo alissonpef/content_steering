@@ -13,6 +13,8 @@ from plot_utils import (
     get_server_color,
     get_server_label,
     get_strategy_display_name,
+    extract_strategy_from_filename,
+    KNOWN_STRATEGY_KEYS,
     CB_BLACK,
     CB_RED,
     KNOWN_SERVER_KEYS_UNDERSCORE,
@@ -76,9 +78,10 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
     if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
         strat_key = df["rl_strategy"].dropna().iloc[0]
     else:
-        m = re.match(r"log_([a-zA-Z0-9_]+?)_average", fname)
-        if m:
-            strat_key = m.group(1)
+        strat_key = extract_strategy_from_filename(fname)
+    if strat_key not in KNOWN_STRATEGY_KEYS:
+        logger.info(f"Skipping unsupported/legacy strategy file: {fname}")
+        return
     strat_display = get_strategy_display_name(strat_key)
     if max_time is not None:
         df = df[df["sim_time_client"] <= max_time].copy()
@@ -158,7 +161,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             else "Avg. Estimated Value"
         )
         if strat_key == "epsilon_greedy":
-            ylabel = "Avg. Estimated Latency"
+            ylabel = "Avg. Estimated Reward"
         for col in value_cols:
             sk = col.replace("value_", "").replace("_", "-")
             sub = df.dropna(subset=["sim_time_client", col])
@@ -199,10 +202,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         c for c in df.columns if c.startswith("count_") and not c.endswith("_std_agg")
     )
     cols3, prefix3, ylabel3 = [], "", "Avg. Selections (Pulls)"
-    if strat_key == "d_ucb" and actual_cnt:
-        cols3, prefix3 = actual_cnt, "actual_count_"
-        ylabel3 = "Avg. Actual Selections (D-UCB)"
-    elif cnt_cols:
+    if cnt_cols:
         cols3, prefix3 = cnt_cols, "count_"
     if cols3:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
