@@ -174,7 +174,7 @@ class DynamicLatencyOracle:
     _NORM_DISTANCE_KM = 12_000.0
     _NORM_JITTER_MS = 40.0
     _NORM_FLAP_MS = 80.0
-    CONTEXT_DIM = 12
+    CONTEXT_DIM = 14
     DEFAULT_SERVER_COORDS = {
         "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
         "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
@@ -350,7 +350,7 @@ class DynamicLatencyOracle:
         if distance_km <= 0:
             return 0.0
         linear = 0.025 * distance_km
-        quadratic = 0.0000015 * (distance_km ** 2)
+        quadratic = 0.0000015 * (distance_km**2)
         return linear + quadratic
 
     def _compute_proximity_bonus_ms(self, distance_km: float) -> float:
@@ -416,7 +416,9 @@ class DynamicLatencyOracle:
         diurnal_mult = self._get_diurnal_multiplier()
         burst_mult = self._get_burst_multiplier(server_name)
         micro_burst_mult = self._micro_burst_gens[server_name].get_multiplier()
-        combined_mod = min(4.0, mod_factor * diurnal_mult * burst_mult * micro_burst_mult)
+        combined_mod = min(
+            4.0, mod_factor * diurnal_mult * burst_mult * micro_burst_mult
+        )
         distance_km = 0.0
         if self.client_latitude is not None and self.client_longitude is not None:
             sc = self.server_geo_coords.get(server_name)
@@ -446,8 +448,11 @@ class DynamicLatencyOracle:
         base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
         eff_loss = min(0.3, base_loss * combined_mod * backbone_f)
         retx_ms = self._compute_retransmission_penalty(base_rtt, eff_loss)
+        latency_estimate = (
+            propagation_ms + distance_penalty_ms + server_load * backbone_f
+        )
         hist = self.latency_history.setdefault(server_name, [])
-        hist.append(server_load)
+        hist.append(latency_estimate)
         if len(hist) > 10:
             del hist[:-10]
         t = time.localtime()
@@ -458,6 +463,20 @@ class DynamicLatencyOracle:
         micro_burst_indicator = min(1.0, max(0.0, (micro_burst_mult - 1.0) / 2.5))
         route_instability = min(1.0, flap_ms / self._NORM_FLAP_MS)
         tcp_warm = self._tcp_sim._connection_warm.get(server_name, False)
+        if len(hist) >= 2:
+            recent_avg = float(np.mean(hist[-5:]))
+        else:
+            recent_avg = latency_estimate
+        norm_recent_avg = min(1.0, recent_avg / self._NORM_LATENCY_MS)
+
+        if len(hist) >= 4:
+            mid = len(hist) // 2
+            old_half = float(np.mean(hist[:mid]))
+            new_half = float(np.mean(hist[mid:]))
+            trend_raw = (new_half - old_half) / max(1.0, old_half)
+            latency_trend = max(-1.0, min(1.0, trend_raw))
+        else:
+            latency_trend = 0.0
         context_vector = np.array(
             [
                 1.0,
@@ -472,6 +491,8 @@ class DynamicLatencyOracle:
                 route_instability,
                 1.0 if tcp_warm else 0.0,
                 popularity,
+                norm_recent_avg,
+                latency_trend,
             ]
         )
         peering_q = self.server_peering_quality.get(server_name, 1.0)
