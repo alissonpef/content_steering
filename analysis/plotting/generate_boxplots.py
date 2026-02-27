@@ -1,176 +1,172 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 import os
 import re
 import argparse
 import logging
+import pandas as pd
+import matplotlib.pyplot as plt
+from plot_utils import (
+    apply_global_style,
+    configure_logger,
+    save_figure,
+    get_strategy_style,
+    STRATEGY_LEGEND_ORDER,
+    CB_RED,
+    CB_BLACK,
+)
 
 logger = logging.getLogger("generate_boxplots")
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
+)
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "boxplots")
 
-PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-DEFAULT_PROCESSED_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "processed")
-DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT_DIR, "results", "boxplots")
-os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
 
-STRATEGY_STYLES = {
-    "ucb1": {"label": "UCB1", "color": "tab:blue"},
-    "epsilon_greedy": {"label": "Epsilon Greedy", "color": "tab:green"},
-    "random": {"label": "Random", "color": "tab:red"},
-    "oracle_best_choice": {"label": "Optimal Strategy", "color": "tab:purple"},
-    "no_steering": {"label": "No Steering", "color": "tab:brown"},
-    "d_ucb": {"label": "D-UCB", "color": "tab:cyan"},
-    "linucb": {"label": "LinUCB", "color": "tab:pink"},
-    "default": {"label": "Unknown", "color": "tab:grey"}
-}
+def _extract_strategy(fname_no_ext: str) -> str:
+    m = re.match(r"log_([a-zA-Z0-9_]+?)_average", fname_no_ext)
+    return m.group(1) if m else "Unknown"
 
-def extract_strategy_name_from_filename(filename_no_ext: str) -> str:
-    match = re.match(r"log_([a-zA-Z0-9_]+?)_average", filename_no_ext)
-    if match:
-        return match.group(1)
-    logger.warning(f"Could not extract strategy name from '{filename_no_ext}'.")
-    return "Unknown"
 
-def generate_individual_boxplot(df: pd.DataFrame, strategy_name_key: str, metric_column: str, output_dir: str):
-    if df.empty or metric_column not in df.columns or df[metric_column].dropna().empty:
-        logger.warning(f"No data or metric '{metric_column}' for strategy '{strategy_name_key}' to generate individual boxplot.")
+def _apply_box_style(bp, color: str, is_hero: bool = False):
+    edge_lw = 2.2 if is_hero else 1.2
+    for box in bp["boxes"]:
+        box.set_facecolor(color)
+        box.set_alpha(0.55 if not is_hero else 0.70)
+        box.set_edgecolor(color)
+        box.set_linewidth(edge_lw)
+    for med in bp["medians"]:
+        med.set_color(CB_BLACK)
+        med.set_linewidth(2.0)
+    for whisk in bp["whiskers"]:
+        whisk.set_color(color)
+        whisk.set_linewidth(1.0)
+    for cap in bp["caps"]:
+        cap.set_color(color)
+        cap.set_linewidth(1.0)
+    for flier in bp["fliers"]:
+        flier.set(
+            marker="D",
+            markerfacecolor=CB_RED,
+            markeredgecolor=CB_RED,
+            markersize=3.5,
+            alpha=0.6,
+        )
+
+
+def generate_individual_boxplot(df, strat_key, metric, output_dir):
+    if df.empty or metric not in df.columns or df[metric].dropna().empty:
         return
+    style = get_strategy_style(strat_key)
+    fig, ax = plt.subplots(figsize=(3.5, 4.5))
+    bp = ax.boxplot(
+        df[metric].dropna(),
+        vert=True,
+        patch_artist=True,
+        labels=[style["label"]],
+        widths=0.45,
+    )
+    _apply_box_style(bp, style["color"], is_hero=(strat_key == "linucb"))
+    ax.set_title(f"Latency Distribution: {style['label']}", pad=8)
+    ax.set_ylabel("Latency (ms)")
+    ax.grid(True, axis="y")
+    fig.tight_layout()
+    save_figure(
+        fig, os.path.join(output_dir, f"boxplot_individual_{strat_key}_{metric}")
+    )
 
-    strategy_style = STRATEGY_STYLES.get(strategy_name_key, STRATEGY_STYLES["default"])
-    label = strategy_style.get("label", strategy_name_key.title())
-    color = strategy_style.get("color", "lightgray")
 
-    plt.figure(figsize=(6, 8))
-    bp = plt.boxplot(df[metric_column].dropna(), vert=True, patch_artist=True, labels=[label])
-    
-    for patch in bp['boxes']:
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-    for median in bp['medians']:
-        median.set_color('black')
-
-    plot_title = f"Latency Distribution: {label}"
-    plt.title(plot_title, fontsize=14)
-    plt.ylabel(f"{metric_column.replace('_', ' ').title()} (ms)", fontsize=12)
-    plt.xticks(fontsize=10)
-    plt.yticks(fontsize=10)
-    plt.grid(True, linestyle=':', alpha=0.7, axis='y')
-    plt.tight_layout()
-
-    filename = f"boxplot_individual_{strategy_name_key}_{metric_column}.png"
-    plot_path = os.path.join(output_dir, filename)
-    try:
-        plt.savefig(plot_path, dpi=200)
-        logger.info(f"Individual boxplot saved: {plot_path}")
-    except Exception as e:
-        logger.error(f"Error saving individual boxplot {filename}: {e}")
-    finally:
-        plt.close()
-
-def generate_comparison_boxplot(all_strategy_data: dict, metric_column: str, output_dir: str):
-    plot_data = []
-    plot_labels = []
-    box_colors_list = []
-
-    sorted_strategy_keys = sorted(all_strategy_data.keys(), key=lambda k: STRATEGY_STYLES.get(k, {}).get("label", k.title()))
-
-    for strategy_key in sorted_strategy_keys:
-        df = all_strategy_data[strategy_key]
-        if not df.empty and metric_column in df.columns and not df[metric_column].dropna().empty:
-            plot_data.append(df[metric_column].dropna().tolist())
-            strategy_style = STRATEGY_STYLES.get(strategy_key, STRATEGY_STYLES["default"])
-            plot_labels.append(strategy_style.get("label", strategy_key.title()))
-            box_colors_list.append(strategy_style.get("color", "lightgray"))
-        else:
-            logger.warning(f"No data or metric '{metric_column}' for strategy '{strategy_key}' in comparison boxplot.")
-
+def generate_comparison_boxplot(all_data: dict, metric, output_dir):
+    ordered_keys = [k for k in STRATEGY_LEGEND_ORDER if k in all_data]
+    ordered_keys += sorted(k for k in all_data if k not in ordered_keys)
+    plot_data, labels, colors, heroes = [], [], [], []
+    for sk in ordered_keys:
+        df = all_data[sk]
+        if df.empty or metric not in df.columns or df[metric].dropna().empty:
+            continue
+        plot_data.append(df[metric].dropna().tolist())
+        style = get_strategy_style(sk)
+        labels.append(style["label"])
+        colors.append(style["color"])
+        heroes.append(sk == "linucb")
     if not plot_data:
-        logger.warning(f"No data to generate comparison boxplot for metric '{metric_column}'.")
+        logger.warning("No data for comparison boxplot.")
         return
+    fig, ax = plt.subplots(figsize=(max(7.0, len(labels) * 1.4), 4.5))
+    bp = ax.boxplot(plot_data, vert=True, patch_artist=True, labels=labels, widths=0.5)
+    for i, (box, color, hero) in enumerate(zip(bp["boxes"], colors, heroes)):
+        box.set_facecolor(color)
+        box.set_alpha(0.55 if not hero else 0.70)
+        box.set_edgecolor(color)
+        box.set_linewidth(2.2 if hero else 1.2)
+    for med in bp["medians"]:
+        med.set_color(CB_BLACK)
+        med.set_linewidth(2.0)
+    for whisk in bp["whiskers"]:
+        whisk.set_linewidth(1.0)
+    for cap in bp["caps"]:
+        cap.set_linewidth(1.0)
+    for flier in bp["fliers"]:
+        flier.set(
+            marker="D",
+            markerfacecolor=CB_RED,
+            markeredgecolor=CB_RED,
+            markersize=3.5,
+            alpha=0.6,
+        )
+    nice = metric.replace("_", " ").replace("ms", "").strip().title()
+    ax.set_title(f"Latency Distribution by Strategy", pad=8)
+    ax.set_ylabel("Latency (ms)")
+    ax.set_xlabel("Strategy")
+    plt.setp(ax.get_xticklabels(), rotation=25, ha="right")
+    ax.grid(True, axis="y")
+    fig.tight_layout()
+    save_figure(fig, os.path.join(output_dir, f"boxplot_comparison_all_{metric}"))
 
-    plt.figure(figsize=(max(10, len(plot_labels) * 1.8), 8))
-    bp = plt.boxplot(plot_data, vert=True, patch_artist=True, labels=plot_labels)
-
-    for patch, color in zip(bp['boxes'], box_colors_list):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-    for median in bp['medians']:
-        median.set_color('black')
-
-    plt.title(f"Comparison of {metric_column.replace('_', ' ').title()} Distribution by Strategy", fontsize=16)
-    plt.ylabel(f"{metric_column.replace('_', ' ').title()} (ms)", fontsize=14)
-    plt.xlabel("Strategy", fontsize=14)
-    plt.xticks(rotation=30, ha="right", fontsize=10)
-    plt.yticks(fontsize=10)
-    plt.grid(True, linestyle=':', alpha=0.7, axis='y')
-    plt.tight_layout()
-
-    filename = f"boxplot_comparison_all_strategies_{metric_column}.png"
-    plot_path = os.path.join(output_dir, filename)
-    try:
-        plt.savefig(plot_path, dpi=300)
-        logger.info(f"Comparison boxplot saved: {plot_path}")
-    except Exception as e:
-        logger.error(f"Error saving comparison boxplot {filename}: {e}")
-    finally:
-        plt.close()
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate individual and comparison boxplots from aggregated simulation logs.")
-    parser.add_argument("--agg_dir", type=str, default=DEFAULT_PROCESSED_LOGS_DIR,
-                        help=f"Directory with aggregated CSV files. Default: {DEFAULT_PROCESSED_LOGS_DIR}")
-    parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
-                        help=f"Directory to save the boxplot images. Default: {DEFAULT_OUTPUT_DIR}")
-    parser.add_argument("--metric", type=str, default="experienced_latency_ms",
-                        choices=["experienced_latency_ms", "experienced_latency_ms_CLIENT", "experienced_latency_ms_ORACLE", "dynamic_best_server_latency"],
-                        help="Metric to plot for boxplots. Default: experienced_latency_ms")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable DEBUG logging.")
+    parser = argparse.ArgumentParser(
+        description="Publication-ready boxplots from aggregated logs."
+    )
+    parser.add_argument("--agg_dir", default=PROCESSED_DIR)
+    parser.add_argument("--output_dir", default=OUTPUT_DIR)
+    parser.add_argument(
+        "--metric",
+        default="experienced_latency_ms",
+        choices=[
+            "experienced_latency_ms",
+            "experienced_latency_ms_CLIENT",
+            "experienced_latency_ms_ORACLE",
+            "dynamic_best_server_latency",
+        ],
+    )
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-
-    _handler_boxplot = logging.StreamHandler()
-    log_level_to_set = logging.DEBUG if args.verbose else logging.INFO
-    _formatter_boxplot = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-    _handler_boxplot.setFormatter(_formatter_boxplot)
-    if not logger.handlers:
-        logger.addHandler(_handler_boxplot)
-    logger.setLevel(log_level_to_set)
-
-    logger.info(f"Logging level set to {logging.getLevelName(logger.getEffectiveLevel())}.")
+    apply_global_style()
+    configure_logger(logger, args.verbose)
     os.makedirs(args.output_dir, exist_ok=True)
-
-    all_strategy_data_for_comparison = {}
-
     if not os.path.isdir(args.agg_dir):
-        logger.error(f"Aggregated logs directory not found: {args.agg_dir}")
+        logger.error(f"Directory not found: {args.agg_dir}")
         return
+    all_data = {}
+    for fn in sorted(os.listdir(args.agg_dir)):
+        if not (fn.startswith("log_") and fn.endswith("_average.csv")):
+            continue
+        path = os.path.join(args.agg_dir, fn)
+        try:
+            df = pd.read_csv(path)
+            if df.empty:
+                continue
+            sk = _extract_strategy(os.path.splitext(fn)[0])
+            if sk == "Unknown":
+                continue
+            generate_individual_boxplot(df, sk, args.metric, args.output_dir)
+            all_data[sk] = df
+        except Exception as exc:
+            logger.error(f"Error processing {fn}: {exc}")
+    if all_data:
+        generate_comparison_boxplot(all_data, args.metric, args.output_dir)
+    logger.info("Boxplot generation complete.")
 
-    for filename in sorted(os.listdir(args.agg_dir)):
-        if filename.startswith("log_") and filename.endswith("_average.csv"):
-            file_path = os.path.join(args.agg_dir, filename)
-            logger.info(f"Processing file for boxplots: {filename}")
-            try:
-                df_agg = pd.read_csv(file_path)
-                if df_agg.empty:
-                    logger.warning(f"File {filename} is empty. Skipping.")
-                    continue
-
-                filename_no_ext = os.path.splitext(filename)[0]
-                strategy_key = extract_strategy_name_from_filename(filename_no_ext)
-
-                if strategy_key == "Unknown":
-                    logger.warning(f"Could not determine strategy for {filename}. Skipping.")
-                else:
-                    generate_individual_boxplot(df_agg, strategy_key, args.metric, args.output_dir)
-                    all_strategy_data_for_comparison[strategy_key] = df_agg.copy()
-
-            except Exception as e:
-                logger.error(f"Error processing file {filename}: {e}", exc_info=True)
-
-    if all_strategy_data_for_comparison:
-        generate_comparison_boxplot(all_strategy_data_for_comparison, args.metric, args.output_dir)
-    else:
-        logger.warning("No data collected from any strategy files to generate a comparison boxplot.")
-
-    logger.info("Boxplot generation process finished.")
 
 if __name__ == "__main__":
     main()
