@@ -1,29 +1,30 @@
 import math
 import random
-import time
 from .base import Selector, selector_logger
 
 
 class D_UCB(Selector):
     def __init__(self, monitor=None, latency_oracle=None):
         super().__init__(monitor=monitor, latency_oracle=latency_oracle)
-        self.GAMMA_STILL = 0.97
-        self.GAMMA_MOVEMENT = 0.85
-        self.GAMMA_LATENCY_SHOCK = 0.70
-        self.LATENCY_SHOCK_RECOVERY_DURATION_SECONDS = 10
-        self.LATENCY_SHOCK_THRESHOLD_FACTOR = 2.0
-        self.MIN_SAMPLES_FOR_SHOCK_DETECTION = 5
-        self.MOVEMENT_COOLDOWN_SECONDS = 10
-        self.current_gamma = self.GAMMA_STILL
+        self.GAMMA_BASE = 0.97
+        self.GAMMA_ADAPT = 0.86
+        self.GAMMA_SHOCK = 0.72
+        self.EXPLORATION_COEFF = 2.0
+        self.EMA_BETA = 0.15
+        self.SHOCK_Z_THRESHOLD = 2.5
+        self.ADAPT_Z_THRESHOLD = 1.4
+        self.SHOCK_COOLDOWN_STEPS = 15
+        self.ADAPT_COOLDOWN_STEPS = 8
+        self.current_gamma = self.GAMMA_BASE
         self.discounted_counts = {}
         self.discounted_values = {}
         self.time_step = 0
-        self.last_gamma_update_log_time = 0
-        self._last_movement_time = 0.0
-        self.latency_shock_recovery_active_until_time = 0
         self.raw_latency_sums = {}
         self.raw_pull_counts = {}
         self.actual_pull_counts = {}
+        self._latency_ema = {}
+        self._latency_var_ema = {}
+        self._adaptive_cooldown_steps = 0
 
     def initialize(self, arms_names: list):
         super().initialize(arms_names)
@@ -43,70 +44,51 @@ class D_UCB(Selector):
         self.raw_latency_sums = new_raw_latency_sums
         self.raw_pull_counts = new_raw_pull_counts
         self.actual_pull_counts = new_actual_pull_counts
+        for arm in self.nodes:
+            if arm not in self._latency_ema:
+                self._latency_ema[arm] = None
+            if arm not in self._latency_var_ema:
+                self._latency_var_ema[arm] = 1.0
         selector_logger.debug(
             f"[D_UCB] Initialized/Re-initialized. Actual Pull Counts: {self.actual_pull_counts}"
         )
 
-    def _check_latency_shock(self, arm_name: str, current_latency_ms: float) -> bool:
-        if arm_name not in self.raw_pull_counts:
-            self.raw_pull_counts[arm_name] = 0
-        if arm_name not in self.raw_latency_sums:
-            self.raw_latency_sums[arm_name] = 0.0
-        if self.raw_pull_counts[arm_name] < self.MIN_SAMPLES_FOR_SHOCK_DETECTION:
-            selector_logger.debug(
-                f"[D_UCB] Shock not checked for {arm_name}: insufficient samples ({self.raw_pull_counts.get(arm_name, 0)}/{self.MIN_SAMPLES_FOR_SHOCK_DETECTION})"
+    def _detect_non_stationarity(self, arm_name: str, latency_ms: float):
+        ema = self._latency_ema.get(arm_name)
+        var = self._latency_var_ema.get(arm_name, 1.0)
+        if ema is None:
+            self._latency_ema[arm_name] = latency_ms
+            self._latency_var_ema[arm_name] = 1.0
+            return 0.0
+        residual = latency_ms - ema
+        beta = self.EMA_BETA
+        ema_new = (1.0 - beta) * ema + beta * latency_ms
+        var_new = (1.0 - beta) * var + beta * (residual ** 2)
+        self._latency_ema[arm_name] = ema_new
+        self._latency_var_ema[arm_name] = max(1e-6, var_new)
+        z_score = abs(residual) / math.sqrt(self._latency_var_ema[arm_name])
+        return z_score
+
+    def _update_gamma_from_latency(self, z_score: float):
+        if z_score >= self.SHOCK_Z_THRESHOLD:
+            self._adaptive_cooldown_steps = max(
+                self._adaptive_cooldown_steps, self.SHOCK_COOLDOWN_STEPS
             )
-            return False
-        avg_raw_latency = (
-            self.raw_latency_sums[arm_name] / self.raw_pull_counts[arm_name]
-        )
-        threshold_latency = avg_raw_latency * self.LATENCY_SHOCK_THRESHOLD_FACTOR
-        if avg_raw_latency < 10:
-            threshold_latency = max(threshold_latency, avg_raw_latency + 15)
-        if current_latency_ms > threshold_latency:
-            selector_logger.info(
-                f"[D_UCB] Latency shock detected for {arm_name}! "
-                f"Current: {current_latency_ms:.2f}ms vs Raw Avg: {avg_raw_latency:.2f}ms (Threshold: {threshold_latency:.2f}ms)"
+        elif z_score >= self.ADAPT_Z_THRESHOLD:
+            self._adaptive_cooldown_steps = max(
+                self._adaptive_cooldown_steps, self.ADAPT_COOLDOWN_STEPS
             )
-            return True
-        selector_logger.debug(
-            f"[D_UCB] No shock for {arm_name}. Current: {current_latency_ms:.2f}ms, Raw Avg: {avg_raw_latency:.2f}ms, Threshold: {threshold_latency:.2f}ms"
-        )
-        return False
+        if self._adaptive_cooldown_steps > self.ADAPT_COOLDOWN_STEPS:
+            self.current_gamma = self.GAMMA_SHOCK
+        elif self._adaptive_cooldown_steps > 0:
+            self.current_gamma = self.GAMMA_ADAPT
+        else:
+            self.current_gamma = self.GAMMA_BASE
 
     def update_environmental_state(
         self, client_is_moving_now: bool, latency_shock_detected: bool
     ):
-        old_gamma = self.current_gamma
-        now = time.time()
-        if client_is_moving_now:
-            self._last_movement_time = now
-        if latency_shock_detected:
-            self.current_gamma = self.GAMMA_LATENCY_SHOCK
-            self.latency_shock_recovery_active_until_time = (
-                now + self.LATENCY_SHOCK_RECOVERY_DURATION_SECONDS
-            )
-            log_reason = "Latency Shock Detected"
-        elif now < self.latency_shock_recovery_active_until_time:
-            self.current_gamma = self.GAMMA_LATENCY_SHOCK
-            log_reason = f"Post-Shock Recovery (remaining {self.latency_shock_recovery_active_until_time - now:.1f}s)"
-        elif client_is_moving_now:
-            self.current_gamma = self.GAMMA_MOVEMENT
-            log_reason = "Active Movement"
-        elif (now - self._last_movement_time) < self.MOVEMENT_COOLDOWN_SECONDS and self._last_movement_time > 0:
-            self.current_gamma = self.GAMMA_MOVEMENT
-            log_reason = f"Movement Cooldown (remaining {self.MOVEMENT_COOLDOWN_SECONDS - (now - self._last_movement_time):.1f}s)"
-        else:
-            self.current_gamma = self.GAMMA_STILL
-            log_reason = "Normal State"
-        if old_gamma != self.current_gamma or (
-            (self.current_gamma != self.GAMMA_STILL)
-            and (now - self.last_gamma_update_log_time > 5)
-        ):
-            selector_logger.info(
-                f"[D_UCB] Gamma: {self.current_gamma:.2f}. Reason: {log_reason}"
-            )
-            self.last_gamma_update_log_time = now
+        return
 
     def select_arm(self, **kwargs) -> list:
         if self.monitor:
@@ -127,7 +109,7 @@ class D_UCB(Selector):
                 return [arm_name] + other_nodes
         ucb_scores = {}
         log_t = math.log(max(1, self.time_step))
-        exploration_coefficient = 2.0
+        exploration_coefficient = self.EXPLORATION_COEFF
         for arm in self.nodes:
             discounted_n_i = max(1e-5, self.discounted_counts.get(arm, 1e-5))
             current_sum_rewards = self.discounted_values.get(arm, 0.0)
@@ -174,6 +156,8 @@ class D_UCB(Selector):
         self.raw_latency_sums[str_arm] += latency_ms
         self.actual_pull_counts[str_arm] += 1
         self.time_step += 1
+        z_score = self._detect_non_stationarity(str_arm, latency_ms)
+        self._update_gamma_from_latency(z_score)
         for arm_node in self.nodes:
             self.discounted_counts[arm_node] = (
                 self.discounted_counts.get(arm_node, 0.0) * self.current_gamma
@@ -183,8 +167,10 @@ class D_UCB(Selector):
             )
         self.discounted_counts[str_arm] += 1.0
         self.discounted_values[str_arm] += reward
+        if self._adaptive_cooldown_steps > 0:
+            self._adaptive_cooldown_steps -= 1
         selector_logger.debug(
-            f"[D_UCB] Update: Arm={str_arm}, Latency={latency_ms:.2f}, Reward={reward:.2f}, Gamma={self.current_gamma:.2f} | "
+            f"[D_UCB] Update: Arm={str_arm}, Latency={latency_ms:.2f}, Reward={reward:.2f}, Gamma={self.current_gamma:.2f}, z={z_score:.2f} | "
             f"NewDiscCnt: {self.discounted_counts[str_arm]:.2f}, NewActualCnt: {self.actual_pull_counts.get(str_arm, 0)} | "
             f"TimeStep: {self.time_step}"
         )
