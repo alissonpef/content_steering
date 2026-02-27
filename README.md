@@ -215,7 +215,6 @@ Log output by scenario:
 - `logs/raw/spam/`
 
 ## Analysis Pipeline
-
 ### 1) Aggregate logs by strategy
 
 Example (baseline):
