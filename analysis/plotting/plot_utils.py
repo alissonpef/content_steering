@@ -55,7 +55,7 @@ STRATEGY_STYLE = {
     },
     "d_ucb": {
         "label": "D-UCB",
-        "color": CB_CYAN,
+        "color": CB_PURPLE,
         "linewidth": 1.6,
         "linestyle": "-",
         "zorder": 5,
