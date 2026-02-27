@@ -1,10 +1,10 @@
 {
   "strategies": {
     "epsilon_greedy": {
-      "epsilon": 0.1
+      "epsilon": 0.3
     },
     "ucb1": {
-      "c": 1.41
+      "c": 1.0
     },
     "d_ucb": {
       "comment": "Fixed gamma values: STILL=0.97, MOVEMENT=0.85, SHOCK=0.70 (hardcoded in d_ucb.py). Exploration coeff=2.0 always. Movement cooldown=10s."
