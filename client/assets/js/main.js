@@ -723,7 +723,7 @@ function startSimulatedCacheSpam(targetCacheName, phaseId) {
   }
   const payload = {
     server_name: targetCacheName,
-    factor: 15.0,
+    factor: 10.0,
     duration_seconds: spamDurationValue,
   };
   fetch("https://steering-service:30500/latency_event", {
