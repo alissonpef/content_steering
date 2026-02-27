@@ -25,23 +25,24 @@ ALGORITHMS: list[str] = [
     "oracle_best_choice",
     "random",
 ]
-SCENARIO_DURATION = 120 
-DEFAULT_RUNS = 1
+
+SCENARIO_DURATION = 300
+DEFAULT_RUNS = 10
 INIT_LAT, INIT_LON = -23.0, -47.0
 CACHE_COORDS = {
     "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
     "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
     "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
 }
-MOBILITY_START = 45
-MOBILITY_END = 75
+MOBILITY_START = 120
+MOBILITY_END = 180
 MOBILITY_TARGET = "video-streaming-cache-2"
 SPAM_SERVER = "video-streaming-cache-1"
-SPAM_START = 45
-SPAM_DURATION = 30
+SPAM_START = 120
+SPAM_DURATION = 60
 SPAM_FACTOR = 15.0
-EXTREME_SPAM_START = 45
-EXTREME_SPAM_DURATION = 30
+EXTREME_SPAM_START = 120
+EXTREME_SPAM_DURATION = 60
 EXTREME_SPAM_FACTOR = 250.0
 STARTUP_WAIT = 5
 SERVICE_POLL_TIMEOUT = 30
@@ -49,21 +50,24 @@ TICK_INTERVAL = 1.0
 INTER_RUN_PAUSE = 2
 INTER_STRATEGY_PAUSE = 3
 
-# SCENARIO_DURATION = 300
-# DEFAULT_RUNS = 10
+# SCENARIO_DURATION = 120
+# DEFAULT_RUNS = 1
 # INIT_LAT, INIT_LON = -23.0, -47.0
 # CACHE_COORDS = {
 #     "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
 #     "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
 #     "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
 # }
-# MOBILITY_START = 120
-# MOBILITY_END = 180
+# MOBILITY_START = 45
+# MOBILITY_END = 75
 # MOBILITY_TARGET = "video-streaming-cache-2"
 # SPAM_SERVER = "video-streaming-cache-1"
-# SPAM_START = 120
-# SPAM_DURATION = 60
+# SPAM_START = 45
+# SPAM_DURATION = 30
 # SPAM_FACTOR = 15.0
+# EXTREME_SPAM_START = 45
+# EXTREME_SPAM_DURATION = 30
+# EXTREME_SPAM_FACTOR = 250.0
 # STARTUP_WAIT = 5
 # SERVICE_POLL_TIMEOUT = 30
 # TICK_INTERVAL = 1.0
@@ -249,7 +253,9 @@ def _run_scenario_tick_loop(
             )
         elapsed = time.time() - t0
         time.sleep(max(0, TICK_INTERVAL - elapsed))
-    expected_path = os.path.join(_scenario_raw_dir(scenario), f"log_{strategy}_{run_idx}.csv")
+    expected_path = os.path.join(
+        _scenario_raw_dir(scenario), f"log_{strategy}_{run_idx}.csv"
+    )
     if os.path.isfile(expected_path):
         logger.info(f"  Saved run log → {expected_path}")
     else:
@@ -375,11 +381,7 @@ def _run_analysis(strategies: list[str], scenarios: list[Scenario]):
         if not os.path.isdir(raw_dir):
             continue
         for fn in sorted(os.listdir(raw_dir)):
-            if (
-                fn.startswith("log_")
-                and fn.endswith(".csv")
-                and "_average" not in fn
-            ):
+            if fn.startswith("log_") and fn.endswith(".csv") and "_average" not in fn:
                 _safe_run([py, graphs_script, os.path.join(raw_dir, fn)], label=fn)
     logger.info("  [2/6] Aggregating logs…")
     for strat in strategies:
@@ -451,13 +453,13 @@ def main():
         description="Scenario-based experiment runner (4 scenarios × N algorithms × R runs).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-                "Scenarios:\n"
-                "  Default: All scenarios run for configured duration.\n"
-                "  1  Baseline       — static client, stable network (300 s)\n"
+            "Scenarios:\n"
+            "  Default: All scenarios run for configured duration.\n"
+            "  1  Baseline       — static client, stable network (300 s)\n"
             "  2  Mobility       — client moves toward Cache 2 (Chile) from t=120s (2:00) to t=180s (3:00)\n"
             "  3  Latency Shock  — 15× spike on Cache 1 from t=120s (2:00) to t=180s (3:00), then recovery\n"
             "  4  Extreme Shock  — 1000× spike on Cache 1 (extreme stress test)\n"
-            ),
+        ),
     )
     parser.add_argument(
         "--strategies",
