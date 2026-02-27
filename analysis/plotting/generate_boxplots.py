@@ -9,6 +9,7 @@ from plot_utils import (
     configure_logger,
     save_figure,
     get_strategy_style,
+    extract_strategy_from_filename,
     STRATEGY_LEGEND_ORDER,
     CB_RED,
     CB_BLACK,
@@ -23,8 +24,7 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "boxplots")
 
 
 def _extract_strategy(fname_no_ext: str) -> str:
-    m = re.match(r"log_([a-zA-Z0-9_]+?)_average", fname_no_ext)
-    return m.group(1) if m else "Unknown"
+    return extract_strategy_from_filename(fname_no_ext)
 
 
 def _apply_box_style(bp, color: str, is_hero: bool = False):
