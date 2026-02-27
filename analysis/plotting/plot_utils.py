@@ -53,15 +53,6 @@ STRATEGY_STYLE = {
         "marker": None,
         "alpha": 0.85,
     },
-    "d_ucb": {
-        "label": "D-UCB",
-        "color": CB_PURPLE,
-        "linewidth": 1.6,
-        "linestyle": "-",
-        "zorder": 5,
-        "marker": None,
-        "alpha": 0.85,
-    },
     "epsilon_greedy": {
         "label": r"$\varepsilon$-Greedy",
         "color": CB_GREEN,
@@ -111,7 +102,6 @@ STRATEGY_STYLE = {
 STRATEGY_LEGEND_ORDER = [
     "oracle_best_choice",
     "linucb",
-    "d_ucb",
     "ucb1",
     "epsilon_greedy",
     "random",
@@ -128,7 +118,6 @@ KNOWN_STRATEGY_KEYS = [
     "epsilon_greedy",
     "no_steering",
     "linucb",
-    "d_ucb",
     "ucb1",
     "random",
 ]
@@ -196,7 +185,10 @@ def extract_strategy_from_filename(filename_no_ext: str) -> str:
         if name == key or name.startswith(key + "_"):
             return key
     m = re.match(r"([a-zA-Z0-9_]+)", name)
-    return m.group(1) if m else "Unknown"
+    if not m:
+        return "Unknown"
+    candidate = m.group(1)
+    return candidate if candidate in KNOWN_STRATEGY_KEYS else "Unknown"
 
 
 def format_axes(
