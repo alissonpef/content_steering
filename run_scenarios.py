@@ -34,12 +34,12 @@ CACHE_COORDS = {
     "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
     "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
 }
-MOBILITY_START = 90
-MOBILITY_END = 135
+MOBILITY_START = 120
+MOBILITY_END = 180
 MOBILITY_TARGET = "video-streaming-cache-2"
 SPAM_SERVER = "video-streaming-cache-1"
-SPAM_START = 90
-SPAM_DURATION = 45
+SPAM_START = 120
+SPAM_DURATION = 60
 SPAM_FACTOR = 15.0
 STARTUP_WAIT = 5
 SERVICE_POLL_TIMEOUT = 30
@@ -421,8 +421,8 @@ def main():
                 "Scenarios:\n"
                 "  Default: All scenarios run for 300 s (5 minutes).\n"
                 "  1  Baseline       — static client, stable network (300 s)\n"
-                "  2  Mobility       — client moves toward Cache 2 (Chile) starting at t=90s (1:30) and finishing at t=135s (2:15)\n"
-                "  3  Latency Shock  — 15× spike on Cache 1 starting at t=90s (1:30) for 45s, then recovery\n"
+            "  2  Mobility       — client moves toward Cache 2 (Chile) from t=120s (2:00) to t=180s (3:00)\n"
+            "  3  Latency Shock  — 15× spike on Cache 1 from t=120s (2:00) to t=180s (3:00), then recovery\n"
             ),
     )
     parser.add_argument(
