@@ -4,77 +4,501 @@ import threading
 import numpy as np
 import logging
 import math
-import json 
 
 logger = logging.getLogger("LatencyOracle")
 
+
 def calculate_haversine_distance(lat1, lon1, lat2, lon2) -> float:
     R = 6371
-    if None in [lat1, lon1, lat2, lon2]:
+    if None in (lat1, lon1, lat2, lon2):
         return 0.0
     try:
-        lat1_f, lon1_f, lat2_f, lon2_f = float(lat1), float(lon1), float(lat2), float(lon2)
-        dLat, dLon, lat1_rad, lat2_rad = map(math.radians, [lat2_f - lat1_f, lon2_f - lon1_f, lat1_f, lat2_f])
+        lat1_f, lon1_f = float(lat1), float(lon1)
+        lat2_f, lon2_f = float(lat2), float(lon2)
     except (ValueError, TypeError):
         return 0.0
-    a = math.sin(dLat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dLon / 2)**2
+    dLat = math.radians(lat2_f - lat1_f)
+    dLon = math.radians(lon2_f - lon1_f)
+    lat1_rad = math.radians(lat1_f)
+    lat2_rad = math.radians(lat2_f)
+    a = (
+        math.sin(dLat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dLon / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
+
+class _OrnsteinUhlenbeckProcess:
+    __slots__ = ("theta", "mu", "sigma", "state", "dt")
+
+    def __init__(self, theta=0.15, mu=0.0, sigma=1.0, initial_state=0.0, dt=1.0):
+        self.theta = theta
+        self.mu = mu
+        self.sigma = sigma
+        self.state = initial_state
+        self.dt = dt
+
+    def sample(self) -> float:
+        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * math.sqrt(
+            self.dt
+        ) * random.gauss(0, 1)
+        self.state += dx
+        return self.state
+
+    def reset(self):
+        self.state = self.mu
+
+
+class _MicroBurstGenerator:
+    __slots__ = (
+        "mean_interval",
+        "mean_duration",
+        "intensity_range",
+        "_next_burst_time",
+        "_burst_end_time",
+        "_current_intensity",
+    )
+
+    def __init__(
+        self, mean_interval_sec=45.0, mean_duration_sec=1.5, intensity_range=(1.2, 2.5)
+    ):
+        self.mean_interval = mean_interval_sec
+        self.mean_duration = mean_duration_sec
+        self.intensity_range = intensity_range
+        now = time.time()
+        self._next_burst_time = now + random.expovariate(1.0 / mean_interval_sec)
+        self._burst_end_time = 0.0
+        self._current_intensity = 1.0
+
+    def get_multiplier(self) -> float:
+        now = time.time()
+        if now < self._burst_end_time:
+            remaining = max(
+                0.0, (self._burst_end_time - now) / max(0.01, self.mean_duration)
+            )
+            return 1.0 + (self._current_intensity - 1.0) * min(1.0, remaining)
+        if now >= self._next_burst_time:
+            duration = max(0.2, min(random.expovariate(1.0 / self.mean_duration), 5.0))
+            self._burst_end_time = now + duration
+            self._current_intensity = random.uniform(*self.intensity_range)
+            self._next_burst_time = (
+                now + duration + random.expovariate(1.0 / self.mean_interval)
+            )
+            return self._current_intensity
+        return 1.0
+
+    def reset(self):
+        now = time.time()
+        self._next_burst_time = now + random.expovariate(1.0 / self.mean_interval)
+        self._burst_end_time = 0.0
+        self._current_intensity = 1.0
+
+
+class _RouteFlappingSimulator:
+    __slots__ = (
+        "mean_interval",
+        "recovery_duration",
+        "_next_flap_time",
+        "_flap_start_time",
+        "_flap_end_time",
+        "_flap_penalty_ms",
+    )
+
+    def __init__(self, mean_interval_sec=120.0, recovery_duration_sec=5.0):
+        self.mean_interval = mean_interval_sec
+        self.recovery_duration = recovery_duration_sec
+        now = time.time()
+        self._next_flap_time = now + random.expovariate(1.0 / mean_interval_sec)
+        self._flap_start_time = 0.0
+        self._flap_end_time = 0.0
+        self._flap_penalty_ms = 0.0
+
+    def get_penalty_ms(self) -> float:
+        now = time.time()
+        if now < self._flap_end_time:
+            elapsed = now - self._flap_start_time
+            tau = self.recovery_duration * 0.4
+            decay = math.exp(-elapsed / tau)
+            oscillation = 1.0 + 0.3 * math.sin(elapsed * 4.0)
+            return self._flap_penalty_ms * decay * oscillation
+        if now >= self._next_flap_time:
+            self._flap_penalty_ms = random.uniform(5, 18)
+            self._flap_start_time = now
+            self._flap_end_time = now + self.recovery_duration
+            self._next_flap_time = (
+                now
+                + self.recovery_duration
+                + random.expovariate(1.0 / self.mean_interval)
+            )
+            return self._flap_penalty_ms
+        return 0.0
+
+    def reset(self):
+        now = time.time()
+        self._next_flap_time = now + random.expovariate(1.0 / self.mean_interval)
+        self._flap_start_time = 0.0
+        self._flap_end_time = 0.0
+        self._flap_penalty_ms = 0.0
+
+
+class _TCPConnectionSimulator:
+    __slots__ = ("_last_request_times", "_connection_warm", "_cooldown_seconds")
+
+    def __init__(self, cooldown_seconds=30.0):
+        self._last_request_times = {}
+        self._connection_warm = {}
+        self._cooldown_seconds = cooldown_seconds
+
+    def get_penalty_ms(self, server_name: str, base_rtt_ms: float) -> float:
+        now = time.time()
+        last_time = self._last_request_times.get(server_name, 0.0)
+        was_warm = self._connection_warm.get(server_name, False)
+        self._last_request_times[server_name] = now
+        if not was_warm or (now - last_time) > self._cooldown_seconds:
+            self._connection_warm[server_name] = True
+            return base_rtt_ms * 0.5
+        self._connection_warm[server_name] = True
+        return 0.0
+
+    def reset(self):
+        self._last_request_times.clear()
+        self._connection_warm.clear()
+
+
 class DynamicLatencyOracle:
-    DEFAULT_USE_DISTANCE_PENALTY: bool = True
-    DEFAULT_MS_PER_KM_FACTOR: float = 0.0250
-    DEFAULT_INITIAL_CLIENT_LAT: float = -23.0
-    DEFAULT_INITIAL_CLIENT_LON: float = -47.0
+    SPEED_OF_LIGHT_FIBER_KMS = 200_000
+    DEFAULT_INITIAL_CLIENT_LAT = -23.0
+    DEFAULT_INITIAL_CLIENT_LON = -47.0
+    _NORM_LATENCY_MS = 300.0
+    _NORM_DISTANCE_KM = 12_000.0
+    _NORM_JITTER_MS = 40.0
+    _NORM_FLAP_MS = 80.0
+    CONTEXT_DIM = 12
+    DEFAULT_SERVER_COORDS = {
+        "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
+        "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
+        "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
+    }
 
     def __init__(self, monitor, update_interval_seconds: int = 2):
         self.monitor = monitor
-        self.server_latencies = {}
+        self.server_latencies: dict[str, float] = {}
         self.server_base_latencies_config = {
-            "video-streaming-cache-1": 30,
-            "video-streaming-cache-2": 25,
-            "video-streaming-cache-3": 125
+            "video-streaming-cache-1": 52,
+            "video-streaming-cache-2": 56,
+            "video-streaming-cache-3": 72,
         }
         self.server_base_jitter_config = {
             "video-streaming-cache-1": 5,
-            "video-streaming-cache-2": 10,
-            "video-streaming-cache-3": 20
+            "video-streaming-cache-2": 6,
+            "video-streaming-cache-3": 7,
         }
         self.server_base_packet_loss_config = {
-            "video-streaming-cache-1": 0.001,
-            "video-streaming-cache-2": 0.005,
-            "video-streaming-cache-3": 0.01
+            "video-streaming-cache-1": 0.002,
+            "video-streaming-cache-2": 0.003,
+            "video-streaming-cache-3": 0.005,
         }
-        self.server_geo_coords = {}
-        self.client_latitude = DynamicLatencyOracle.DEFAULT_INITIAL_CLIENT_LAT
-        self.client_longitude = DynamicLatencyOracle.DEFAULT_INITIAL_CLIENT_LON
-        self.server_event_modifiers = {}
+        self.server_peering_quality = {
+            "video-streaming-cache-1": 1.0,
+            "video-streaming-cache-2": 1.30,
+            "video-streaming-cache-3": 1.40,
+        }
+        self.server_geo_coords: dict = {}
+        self.client_latitude = self.DEFAULT_INITIAL_CLIENT_LAT
+        self.client_longitude = self.DEFAULT_INITIAL_CLIENT_LON
+        self.server_event_modifiers: dict[str, tuple] = {}
         self.update_interval_seconds = max(0.5, update_interval_seconds)
-        self.ms_per_km_factor = DynamicLatencyOracle.DEFAULT_MS_PER_KM_FACTOR
-        self.use_distance_penalty = DynamicLatencyOracle.DEFAULT_USE_DISTANCE_PENALTY
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.running = False
         self.thread = None
-        self.noise_std_dev_factor = 0.15
-        self.min_simulated_latency = 5
-        
-        self.previous_latencies = {}
-        self.movement_smoothing_factor = 0.3
-        
-        self.latency_history = {}
-        self.server_selection_counts = {}
-        
+        self.min_simulated_latency = 45.0
+        self.movement_smoothing_factor = 0.35
+        self._jitter_processes: dict[str, _OrnsteinUhlenbeckProcess] = {}
+        self._micro_burst_gens: dict[str, _MicroBurstGenerator] = {}
+        self._route_flap_sims: dict[str, _RouteFlappingSimulator] = {}
+        self._tcp_sim = _TCPConnectionSimulator(cooldown_seconds=30.0)
+        self.latency_history: dict[str, list] = {}
+        self.server_selection_counts: dict[str, int] = {}
+        self.previous_latencies: dict[str, float] = {}
         self.burst_active = False
-        self.burst_end_time = 0
-        self.burst_affected_servers = []
-        
+        self._burst_start_time = 0.0
+        self.burst_end_time = 0.0
+        self.burst_affected_servers: list = []
+        self._burst_intensity = 2.5
+        self._backbone_groups = {
+            "south_america": [
+                "video-streaming-cache-1",
+                "video-streaming-cache-2",
+                "video-streaming-cache-3",
+            ]
+        }
+        self._backbone_congestion: dict[str, float] = {}
+        self._last_diurnal_time = 0.0
+        self._cached_diurnal_mult = 1.0
         self._update_server_geo_coordinates()
 
     def _update_server_geo_coordinates(self):
+        coords = {}
         if self.monitor:
-            coords = self.monitor.get_node_coordinates()
-            with self.lock:
-                self.server_geo_coords = coords if isinstance(coords, dict) else {}
+            monitor_coords = self.monitor.get_node_coordinates()
+            if isinstance(monitor_coords, dict):
+                coords.update(monitor_coords)
+        for server_name, fallback in self.DEFAULT_SERVER_COORDS.items():
+            current = coords.get(server_name, {})
+            lat = current.get("lat") if isinstance(current, dict) else None
+            lon = current.get("lon") if isinstance(current, dict) else None
+            if lat is None or lon is None:
+                coords[server_name] = fallback
+        with self.lock:
+            self.server_geo_coords = coords
+
+    def _ensure_server_components(self, server_name: str):
+        if server_name not in self._jitter_processes:
+            base_jitter = self.server_base_jitter_config.get(server_name, 10)
+            self._jitter_processes[server_name] = _OrnsteinUhlenbeckProcess(
+                theta=0.15,
+                mu=0.0,
+                sigma=base_jitter * 0.6,
+                dt=self.update_interval_seconds,
+            )
+        if server_name not in self._micro_burst_gens:
+            base_lat = self.server_base_latencies_config.get(server_name, 30)
+            burst_interval = max(20.0, 60.0 - base_lat * 0.3)
+            self._micro_burst_gens[server_name] = _MicroBurstGenerator(
+                mean_interval_sec=burst_interval,
+                mean_duration_sec=1.5,
+                intensity_range=(1.05, 1.35),
+            )
+        if server_name not in self._route_flap_sims:
+            self._route_flap_sims[server_name] = _RouteFlappingSimulator(
+                mean_interval_sec=120.0,
+                recovery_duration_sec=5.0,
+            )
+
+    def _initialize_server_states(self):
+        current_nodes_info = self.monitor.getNodes() if self.monitor else []
+        if not current_nodes_info:
+            return
+        current_node_names = [
+            info[0] for info in current_nodes_info if info and info[0]
+        ]
+        if not current_node_names:
+            return
+        self._update_server_geo_coordinates()
+        with self.lock:
+            for name in current_node_names:
+                if name not in self.server_latencies:
+                    initial = self.server_base_latencies_config.get(
+                        name, random.uniform(10, 30)
+                    )
+                    self.server_latencies[name] = initial
+                    self.server_event_modifiers[name] = (1.0, 0)
+                    self._ensure_server_components(name)
+                    logger.info(
+                        f"Oracle: Server {name} initialised (base: {initial:.1f}ms)"
+                    )
+            stale = [n for n in self.server_latencies if n not in current_node_names]
+            for name in stale:
+                self.server_latencies.pop(name, None)
+                self.server_event_modifiers.pop(name, None)
+                self._jitter_processes.pop(name, None)
+                self._micro_burst_gens.pop(name, None)
+                self._route_flap_sims.pop(name, None)
+                logger.info(f"Oracle: Server {name} removed.")
+
+    def _get_diurnal_multiplier(self) -> float:
+        now = time.time()
+        if now - self._last_diurnal_time < 0.5:
+            return self._cached_diurnal_mult
+        t = time.localtime(now)
+        hour_frac = t.tm_hour + t.tm_min / 60.0 + t.tm_sec / 3600.0
+        t_rad = (hour_frac / 24.0) * 2.0 * math.pi
+        primary = 0.12 * math.sin(t_rad - math.radians(300))
+        secondary = 0.05 * math.sin(2.0 * t_rad - math.radians(135))
+        tertiary = 0.02 * math.sin(3.0 * t_rad - math.radians(180))
+        noise = random.gauss(0, 0.02)
+        mult = max(0.80, min(1.25, 1.0 + primary + secondary + tertiary + noise))
+        self._cached_diurnal_mult = mult
+        self._last_diurnal_time = now
+        return mult
+
+    def _update_backbone_congestion(self):
+        total_sel = max(1, sum(self.server_selection_counts.values()))
+        for group, members in self._backbone_groups.items():
+            group_load = sum(self.server_selection_counts.get(m, 0) for m in members)
+            rho = group_load / total_sel
+            if rho < 0.8:
+                factor = 1.0 + 0.1 * rho
+            else:
+                factor = 1.0 + 0.5 / max(0.01, 1.0 - rho)
+            self._backbone_congestion[group] = min(factor, 3.0)
+
+    def _get_backbone_factor(self, server_name: str) -> float:
+        for group, members in self._backbone_groups.items():
+            if server_name in members:
+                return self._backbone_congestion.get(group, 1.0)
+        return 1.0
+
+    def _compute_propagation_delay_ms(self, distance_km: float) -> float:
+        if distance_km <= 0:
+            return 0.0
+        one_way_ms = (distance_km / self.SPEED_OF_LIGHT_FIBER_KMS) * 1000.0
+        return 2.0 * one_way_ms * 1.10
+
+    def _compute_distance_penalty_ms(self, distance_km: float) -> float:
+        if distance_km <= 0:
+            return 0.0
+        linear = 0.025 * distance_km
+        quadratic = 0.0000015 * (distance_km ** 2)
+        return linear + quadratic
+
+    def _compute_proximity_bonus_ms(self, distance_km: float) -> float:
+        if distance_km >= 800.0:
+            return 0.0
+        closeness = 1.0 - (distance_km / 800.0)
+        return 6.0 * max(0.0, closeness)
+
+    def _compute_retransmission_penalty(
+        self, base_rtt_ms: float, loss_rate: float
+    ) -> float:
+        if loss_rate <= 0 or base_rtt_ms <= 0:
+            return 0.0
+        penalty = 0.0
+        backoff = 1.0
+        for _ in range(10):
+            if random.random() < loss_rate:
+                penalty += base_rtt_ms * backoff
+                backoff = min(backoff * 1.5, 4.0)
+        return penalty
+
+    def _compute_queue_delay_ms(self, server_name: str) -> float:
+        total = max(1, sum(self.server_selection_counts.values()))
+        rho = min(0.95, self.server_selection_counts.get(server_name, 0) / total)
+        if rho < 0.1:
+            return 0.0
+        return (rho / max(0.05, 1.0 - rho)) * 5.0
+
+    def _get_burst_multiplier(self, server_name: str) -> float:
+        now = time.time()
+        if self.burst_active and now < self.burst_end_time:
+            if server_name in self.burst_affected_servers:
+                total_dur = max(1.0, self.burst_end_time - self._burst_start_time)
+                remaining_ratio = max(0.0, (self.burst_end_time - now) / total_dur)
+                return 1.0 + (self._burst_intensity - 1.0) * remaining_ratio
+        elif self.burst_active:
+            self.burst_active = False
+        return 1.0
+
+    def _apply_movement_smoothing(self, server_name: str, raw: float) -> float:
+        prev = self.previous_latencies.get(server_name)
+        if prev is None:
+            self.previous_latencies[server_name] = raw
+            return raw
+        alpha = self.movement_smoothing_factor
+        delta = abs(raw - prev)
+        if delta > 60:
+            alpha *= 0.2
+        elif delta > 30:
+            alpha *= 0.5
+        smoothed = alpha * prev + (1.0 - alpha) * raw
+        self.previous_latencies[server_name] = max(self.min_simulated_latency, smoothed)
+        return max(self.min_simulated_latency, smoothed)
+
+    def _compute_latency_internal(self, server_name: str):
+        self._ensure_server_components(server_name)
+        base_latency = self.server_base_latencies_config.get(server_name, 30)
+        mod_factor, mod_expiry = self.server_event_modifiers.get(server_name, (1.0, 0))
+        if mod_expiry != 0 and time.time() >= mod_expiry:
+            mod_factor = 1.0
+            if self.server_event_modifiers.get(server_name) != (1.0, 0):
+                self.server_event_modifiers[server_name] = (1.0, 0)
+        diurnal_mult = self._get_diurnal_multiplier()
+        burst_mult = self._get_burst_multiplier(server_name)
+        micro_burst_mult = self._micro_burst_gens[server_name].get_multiplier()
+        combined_mod = min(4.0, mod_factor * diurnal_mult * burst_mult * micro_burst_mult)
+        distance_km = 0.0
+        if self.client_latitude is not None and self.client_longitude is not None:
+            sc = self.server_geo_coords.get(server_name)
+            if sc and sc.get("lat") is not None and sc.get("lon") is not None:
+                distance_km = calculate_haversine_distance(
+                    self.client_latitude,
+                    self.client_longitude,
+                    sc["lat"],
+                    sc["lon"],
+                )
+        propagation_ms = self._compute_propagation_delay_ms(distance_km)
+        distance_penalty_ms = self._compute_distance_penalty_ms(distance_km)
+        proximity_bonus_ms = self._compute_proximity_bonus_ms(distance_km)
+        processing_noise = random.gauss(0, max(1, base_latency) * 0.05)
+        server_load = max(
+            self.min_simulated_latency, (base_latency + processing_noise) * combined_mod
+        )
+        ou_sample = self._jitter_processes[server_name].sample()
+        jitter_amp = 1.0 + (combined_mod - 1.0) * 0.4
+        dist_jitter = 1.0 + (distance_km / 2000.0) * 0.15
+        jitter_mag = abs(ou_sample) * jitter_amp * dist_jitter
+        queue_ms = self._compute_queue_delay_ms(server_name)
+        base_rtt = propagation_ms + base_latency
+        tcp_ms = self._tcp_sim.get_penalty_ms(server_name, base_rtt)
+        flap_ms = self._route_flap_sims[server_name].get_penalty_ms()
+        backbone_f = self._get_backbone_factor(server_name)
+        base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
+        eff_loss = min(0.3, base_loss * combined_mod * backbone_f)
+        retx_ms = self._compute_retransmission_penalty(base_rtt, eff_loss)
+        hist = self.latency_history.setdefault(server_name, [])
+        hist.append(server_load)
+        if len(hist) > 10:
+            del hist[:-10]
+        t = time.localtime()
+        time_of_day = (t.tm_hour + t.tm_min / 60.0) / 24.0
+        total_sel = max(1, sum(self.server_selection_counts.values()))
+        popularity = self.server_selection_counts.get(server_name, 0) / total_sel
+        congestion = min(1.0, max(0.0, (diurnal_mult - 0.6) / 0.9))
+        micro_burst_indicator = min(1.0, max(0.0, (micro_burst_mult - 1.0) / 2.5))
+        route_instability = min(1.0, flap_ms / self._NORM_FLAP_MS)
+        tcp_warm = self._tcp_sim._connection_warm.get(server_name, False)
+        context_vector = np.array(
+            [
+                1.0,
+                min(1.0, propagation_ms / self._NORM_LATENCY_MS),
+                min(1.0, distance_km / self._NORM_DISTANCE_KM),
+                min(1.0, server_load / self._NORM_LATENCY_MS),
+                min(1.0, jitter_mag / self._NORM_JITTER_MS),
+                min(1.0, eff_loss * 10.0),
+                time_of_day,
+                congestion,
+                micro_burst_indicator,
+                route_instability,
+                1.0 if tcp_warm else 0.0,
+                popularity,
+            ]
+        )
+        peering_q = self.server_peering_quality.get(server_name, 1.0)
+        jitter_sign = random.choice([-0.3, 0.5, 0.7, 1.0])
+        raw_latency = (
+            propagation_ms
+            + distance_penalty_ms * peering_q
+            + server_load * backbone_f
+            + jitter_mag * jitter_sign
+            + queue_ms
+            + tcp_ms
+            + flap_ms
+            + retx_ms
+            - proximity_bonus_ms
+        )
+        raw_latency = max(self.min_simulated_latency, raw_latency)
+        final = self._apply_movement_smoothing(server_name, raw_latency)
+        return context_vector, final
+
+    def _update_latencies(self):
+        self._initialize_server_states()
+        with self.lock:
+            self._update_backbone_congestion()
+            for name in list(self.server_latencies):
+                _, lat = self._compute_latency_internal(name)
+                self.server_latencies[name] = lat
+                logger.debug(f"Oracle tick: {name} → {lat:.1f}ms")
 
     def update_client_location(self, lat: float, lon: float):
         if lat is None or lon is None:
@@ -85,232 +509,122 @@ class DynamicLatencyOracle:
                 if new_lat != self.client_latitude or new_lon != self.client_longitude:
                     self.client_latitude = new_lat
                     self.client_longitude = new_lon
-                    logger.debug(f"Oracle: Client location updated to Lat={new_lat}, Lon={new_lon}")
+                    logger.debug(f"Oracle: Client → ({new_lat}, {new_lon})")
             except (ValueError, TypeError):
-                logger.warning(f"Oracle: Invalid client coordinates received: lat={lat}, lon={lon}")
+                logger.warning(f"Oracle: Invalid coords lat={lat}, lon={lon}")
 
-    def _initialize_server_states(self):
-        current_nodes_info = self.monitor.getNodes()
-        if not current_nodes_info:
-            logger.debug("Oracle: No monitor nodes to initialize states.")
-            return
-
-        current_node_names = [info[0] for info in current_nodes_info if info and info[0]]
-        if not current_node_names:
-            logger.debug("Oracle: No valid node names from monitor.")
-            return
-
-        self._update_server_geo_coordinates()
-
+    def get_context_and_final_latency(self, server_name: str):
         with self.lock:
-            for name in current_node_names:
-                if name not in self.server_latencies:
-                    initial_lat = self.server_base_latencies_config.get(name, random.uniform(10, 30))
-                    self.server_latencies[name] = initial_lat
-                    self.server_event_modifiers[name] = (1.0, 0)
-                    logger.info(f"Oracle: Server {name} added (initial lat: {initial_lat:.2f}ms).")
-
-            servers_in_oracle = list(self.server_latencies.keys())
-            removed_servers = [name for name in servers_in_oracle if name not in current_node_names]
-            for name in removed_servers:
-                del self.server_latencies[name]
-                if name in self.server_event_modifiers:
-                    del self.server_event_modifiers[name]
-                logger.info(f"Oracle: Server {name} removed.")
-
-    def _update_latencies(self):
-        self._initialize_server_states()
-        with self.lock:
-            for server_name in list(self.server_latencies.keys()):
-                _, final_latency = self.get_context_and_final_latency(server_name)
-                self.server_latencies[server_name] = final_latency
-                logger.debug(f"Oracle: Updated Latency {server_name}: {final_latency:.2f}ms")
-
-    def _get_time_of_day_multiplier(self):
-        hour = time.localtime().tm_hour
-        if 8 <= hour < 10 or 18 <= hour < 22:
-            return 1.3 + random.uniform(-0.1, 0.2)
-        elif 12 <= hour < 14:
-            return 1.2 + random.uniform(-0.05, 0.1)
-        elif 2 <= hour < 6:
-            return 0.7 + random.uniform(-0.1, 0.1)
-        else:
-            return 1.0 + random.uniform(-0.1, 0.1)
-
-    def _get_burst_multiplier(self, server_name):
-        current_time = time.time()
-        if self.burst_active and current_time < self.burst_end_time:
-            if server_name in self.burst_affected_servers:
-                burst_duration = 30
-                time_since_start = burst_duration - (self.burst_end_time - current_time)
-                remaining_ratio = (self.burst_end_time - current_time) / burst_duration
-                return 1.0 + (1.5 * remaining_ratio)
-        else:
-            self.burst_active = False
-        return 1.0
-
-    def _apply_movement_smoothing(self, server_name, new_latency):
-        if server_name not in self.previous_latencies:
-            self.previous_latencies[server_name] = new_latency
-            return new_latency
-        
-        prev_lat = self.previous_latencies[server_name]
-        smoothed = prev_lat * self.movement_smoothing_factor + new_latency * (1 - self.movement_smoothing_factor)
-        self.previous_latencies[server_name] = smoothed
-        return smoothed
-
-    def trigger_traffic_burst(self, duration_seconds=30, intensity=2.5):
-        with self.lock:
-            self.burst_active = True
-            self.burst_end_time = time.time() + duration_seconds
-            all_servers = list(self.server_latencies.keys())
-            if all_servers:
-                self.burst_affected_servers = random.sample(all_servers, k=min(2, len(all_servers)))
-                logger.info(f"Traffic burst iniciado por {duration_seconds}s em {self.burst_affected_servers}")
-
-    def apply_correlated_failure(self, primary_server, cascade_factor=1.8, duration=20):
-        with self.lock:
-            if primary_server not in self.server_latencies:
-                return
-            
-            self.apply_event_modifier(primary_server, 10.0, duration)
-            
-            other_servers = [s for s in self.server_latencies.keys() if s != primary_server]
-            for server in other_servers:
-                self.apply_event_modifier(server, cascade_factor, duration)
-            
-            logger.warning(f"Falha correlacionada: {primary_server} falhou, cascateando para {other_servers}")
-
-    def track_server_selection(self, server_name: str):
-        with self.lock:
-            self.server_selection_counts[server_name] = self.server_selection_counts.get(server_name, 0) + 1
-
-    def get_context_and_final_latency(self, server_name: str) -> tuple[np.ndarray, float]:
-        if server_name not in self.server_latencies:
-            self._initialize_server_states()
-        
-        base_latency_config = self.server_base_latencies_config.get(server_name, 30)
-        current_modifier_factor, current_expiry_time = self.server_event_modifiers.get(server_name, (1.0, 0))
-        
-        final_modifier_to_apply = current_modifier_factor
-        if current_expiry_time != 0 and time.time() >= current_expiry_time:
-            final_modifier_to_apply = 1.0
-            if self.server_event_modifiers.get(server_name) != (1.0, 0):
-                self.server_event_modifiers[server_name] = (1.0, 0)
-        
-        time_of_day_mult = self._get_time_of_day_multiplier()
-        burst_mult = self._get_burst_multiplier(server_name)
-        combined_modifier = final_modifier_to_apply * time_of_day_mult * burst_mult
-        
-        feature_distance_km = 0.0
-        if self.use_distance_penalty and self.client_latitude is not None and self.client_longitude is not None:
-            server_coords = self.server_geo_coords.get(server_name)
-            if server_coords and server_coords.get('lat') is not None and server_coords.get('lon') is not None:
-                feature_distance_km = calculate_haversine_distance(
-                    self.client_latitude, self.client_longitude,
-                    server_coords['lat'], server_coords['lon']
-                )
-
-        noise = np.random.normal(loc=0, scale=max(1, base_latency_config) * self.noise_std_dev_factor)
-        feature_server_load = max(self.min_simulated_latency, (base_latency_config + noise)) * combined_modifier
-        
-        base_jitter = self.server_base_jitter_config.get(server_name, 10)
-        distance_jitter_multiplier = 1.0 + (feature_distance_km / 1000) * 0.5
-        jitter_multiplier = (1.0 + (combined_modifier - 1.0) * 1.5) * distance_jitter_multiplier
-        feature_jitter = np.random.uniform(base_jitter * 0.5, base_jitter * 1.5) * jitter_multiplier
-
-        base_loss = self.server_base_packet_loss_config.get(server_name, 0.01)
-        feature_packet_loss = min(1.0, base_loss * combined_modifier)
-        
-        if server_name not in self.latency_history:
-            self.latency_history[server_name] = []
-        self.latency_history[server_name].append(feature_server_load)
-        self.latency_history[server_name] = self.latency_history[server_name][-10:]
-        feature_historical_avg = np.mean(self.latency_history[server_name])
-        
-        current_hour = time.localtime().tm_hour
-        current_min = time.localtime().tm_min
-        feature_time_of_day = (current_hour + current_min / 60) / 24
-        
-        total_selections = sum(self.server_selection_counts.values()) or 1
-        feature_popularity = self.server_selection_counts.get(server_name, 0) / total_selections
-        
-        feature_congestion = min(1.0, max(0.0, (time_of_day_mult - 0.7) / 0.8))
-        
-        context_vector = np.array([
-            1.0,
-            feature_distance_km,
-            feature_server_load,
-            feature_jitter,
-            feature_packet_loss,
-            feature_historical_avg,
-            feature_time_of_day,
-            feature_popularity,
-            feature_congestion
-        ])
-
-
-        distance_penalty = feature_distance_km * self.ms_per_km_factor
-        jitter_effect_on_latency = feature_jitter * np.random.choice([-1, 1])
-        packet_loss_penalty = 500 if np.random.rand() < feature_packet_loss else 0
-        
-        raw_final_latency = feature_server_load + distance_penalty + jitter_effect_on_latency + packet_loss_penalty
-        
-        final_latency = self._apply_movement_smoothing(server_name, raw_final_latency)
-        
-        return context_vector, final_latency
-
+            if server_name not in self.server_latencies:
+                self._initialize_server_states()
+            self._ensure_server_components(server_name)
+            return self._compute_latency_internal(server_name)
 
     def get_current_latency(self, server_name: str) -> float:
         with self.lock:
-            latency = self.server_latencies.get(server_name)
-            if latency is None:
-                logger.warning(f"Oracle: Latency not found for {server_name}. Returning random value.")
+            lat = self.server_latencies.get(server_name)
+            if lat is None:
+                logger.warning(f"Oracle: Latency unknown for {server_name}")
                 return random.uniform(50, 150)
-            return latency
+            return lat
 
     def get_all_current_latencies(self) -> dict:
         with self.lock:
             if not self.server_latencies and self.monitor and self.monitor.getNodes():
-                 self._initialize_server_states()
+                self._initialize_server_states()
             return dict(self.server_latencies)
 
-    def apply_event_modifier(self, server_name: str, factor: float, duration_seconds: int):
+    def apply_event_modifier(
+        self, server_name: str, factor: float, duration_seconds: int
+    ):
         with self.lock:
             if server_name in self.server_latencies:
-                expiry_timestamp = time.time() + duration_seconds if duration_seconds > 0 else 0
-                self.server_event_modifiers[server_name] = (factor, expiry_timestamp)
-                logger.info(f"Oracle: Latency event applied to {server_name}. Factor: {factor:.2f}, Duration: {duration_seconds}s.")
+                expiry = time.time() + duration_seconds if duration_seconds > 0 else 0
+                self.server_event_modifiers[server_name] = (factor, expiry)
+                logger.info(
+                    f"Oracle: Event → {server_name}  factor={factor:.2f}  dur={duration_seconds}s"
+                )
             else:
-                logger.warning(f"Oracle: Attempt to apply event to unknown server '{server_name}'.")
+                logger.warning(f"Oracle: Unknown server '{server_name}' for event.")
 
     def is_any_event_active(self) -> bool:
         with self.lock:
-            current_time = time.time()
-            for server_name, (factor, expiry_time) in self.server_event_modifiers.items():
-                if factor != 1.0 and (expiry_time == 0 or current_time < expiry_time) :
-                    logger.debug(f"Oracle: Active event detected for {server_name} (factor: {factor}, expires at: {expiry_time})")
+            now = time.time()
+            for _, (factor, expiry) in self.server_event_modifiers.items():
+                if factor != 1.0 and (expiry == 0 or now < expiry):
                     return True
         return False
 
     def reset_events(self):
         with self.lock:
-            self.server_event_modifiers = {}
-            logger.info("Oracle: All active events cleared.")
+            self.server_event_modifiers = {k: (1.0, 0) for k in self.server_latencies}
+            self.previous_latencies.clear()
+            self.latency_history.clear()
+            self.server_selection_counts.clear()
+            self._tcp_sim.reset()
+            for p in self._jitter_processes.values():
+                p.reset()
+            for g in self._micro_burst_gens.values():
+                g.reset()
+            for s in self._route_flap_sims.values():
+                s.reset()
+            self._backbone_congestion.clear()
+            self.burst_active = False
+            self.burst_end_time = 0.0
+            self._burst_start_time = 0.0
+            self.burst_affected_servers = []
+            logger.info("Oracle: Full state reset.")
+
+    def track_server_selection(self, server_name: str):
+        with self.lock:
+            self.server_selection_counts[server_name] = (
+                self.server_selection_counts.get(server_name, 0) + 1
+            )
+
+    def trigger_traffic_burst(self, duration_seconds=30, intensity=2.5):
+        with self.lock:
+            self.burst_active = True
+            self._burst_start_time = time.time()
+            self.burst_end_time = self._burst_start_time + duration_seconds
+            self._burst_intensity = intensity
+            servers = list(self.server_latencies.keys())
+            if servers:
+                self.burst_affected_servers = random.sample(
+                    servers, k=min(2, len(servers))
+                )
+                logger.info(
+                    f"Traffic burst: {duration_seconds}s on {self.burst_affected_servers}"
+                )
+
+    def apply_correlated_failure(
+        self, primary_server: str, cascade_factor: float = 1.8, duration: int = 20
+    ):
+        with self.lock:
+            if primary_server not in self.server_latencies:
+                return
+            now = time.time()
+            self.server_event_modifiers[primary_server] = (10.0, now + duration)
+            for s in self.server_latencies:
+                if s != primary_server:
+                    self.server_event_modifiers[s] = (cascade_factor, now + duration)
+            logger.warning(
+                f"Correlated failure: {primary_server} → cascade={cascade_factor}"
+            )
 
     def run_update_loop(self):
-        logger.info("Oracle: Starting latency update loop.")
+        logger.info("Oracle: Update loop started.")
         try:
             while self.running:
                 self._update_latencies()
-                for _ in range(int(self.update_interval_seconds * 10)):
+                steps = int(self.update_interval_seconds * 10)
+                for _ in range(steps):
                     if not self.running:
                         break
                     time.sleep(0.1)
         except Exception as e:
-            logger.error(f"Oracle: Critical error in update loop: {e}", exc_info=True)
+            logger.error(f"Oracle: Critical error in loop: {e}", exc_info=True)
         finally:
-            logger.info("Oracle: Latency update loop ended.")
+            logger.info("Oracle: Update loop ended.")
 
     def start(self):
         if self.thread is None or not self.thread.is_alive():
@@ -318,47 +632,75 @@ class DynamicLatencyOracle:
             self._update_server_geo_coordinates()
             self.thread = threading.Thread(target=self.run_update_loop, daemon=True)
             self.thread.start()
-            logger.info("Oracle: Update thread started.")
+            logger.info("Oracle: Thread started.")
 
     def stop(self):
-        logger.info("Oracle: Requesting stop of update thread.")
+        logger.info("Oracle: Requesting stop.")
         self.running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=self.update_interval_seconds + 1)
         if self.thread and self.thread.is_alive():
-            logger.warning("Oracle: Update thread did not terminate in the expected time.")
+            logger.warning("Oracle: Thread did not terminate in time.")
         self.thread = None
-        
-if __name__ == '__main__':
-    _formatter_standalone = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    _handler_standalone = logging.StreamHandler()
-    _handler_standalone.setFormatter(_formatter_standalone)
 
-    logger.addHandler(_handler_standalone)
+
+if __name__ == "__main__":
+    import json
+
+    _fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    _hdl = logging.StreamHandler()
+    _hdl.setFormatter(_fmt)
+    logger.addHandler(_hdl)
     logger.setLevel(logging.DEBUG)
 
     class MockMonitor:
-        def getNodes(self): return [("video-streaming-cache-1", "ip1"), ("video-streaming-cache-2", "ip2")]
-        def get_node_coordinates(self): return {"video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},"video-streaming-cache-2": {"lat": -33.0, "lon": -71.0}}
-        def start_collecting(self): logger.info("MockMonitor: start_collecting()")
-        def stop_collecting(self): logger.info("MockMonitor: stop_collecting()")
-        @property
-        def interval(self): return 2
+        def getNodes(self):
+            return [
+                ("video-streaming-cache-1", "ip1"),
+                ("video-streaming-cache-2", "ip2"),
+                ("video-streaming-cache-3", "ip3"),
+            ]
 
-    logger.info("Starting standalone test of DynamicLatencyOracle...")
-    mock_monitor = MockMonitor()
-    oracle = DynamicLatencyOracle(monitor=mock_monitor, update_interval_seconds=1)
+        def get_node_coordinates(self):
+            return {
+                "video-streaming-cache-1": {"lat": -23.0, "lon": -47.0},
+                "video-streaming-cache-2": {"lat": -33.0, "lon": -71.0},
+                "video-streaming-cache-3": {"lat": 5.0, "lon": -74.0},
+            }
+
+        def start_collecting(self):
+            pass
+
+        def stop_collecting(self):
+            pass
+
+        @property
+        def interval(self):
+            return 2
+
+    logger.info("Starting ultra-realistic DynamicLatencyOracle test...")
+    mock = MockMonitor()
+    oracle = DynamicLatencyOracle(monitor=mock, update_interval_seconds=1)
     oracle.start()
     try:
-        for i in range(10):
+        for i in range(15):
             time.sleep(1)
-            all_lats = oracle.get_all_current_latencies()
-            logger.info(f"Tick {i+1:>2} - Latencies: {json.dumps({k: round(v,1) for k,v in all_lats.items()})}")
-            if i == 2:
-                oracle.apply_event_modifier("video-streaming-cache-1", 5.0, 4)
-                logger.info("Applied SPAM to video-streaming-cache-1 for 4s")
-            is_spam = oracle.is_any_event_active()
-            logger.info(f"Tick {i+1:>2} - Spam event active? {is_spam}")
-            if i == 7: oracle.update_client_location(-30.0, -60.0); logger.info("Client moved.")
-    except KeyboardInterrupt: logger.info("Oracle test interrupted.")
-    finally: oracle.stop(); logger.info("Oracle test finished.")
+            lats = oracle.get_all_current_latencies()
+            logger.info(
+                f"Tick {i + 1:>2} | {json.dumps({k: round(v, 1) for k, v in lats.items()})}"
+            )
+            if i == 3:
+                oracle.apply_event_modifier("video-streaming-cache-1", 5.0, 5)
+                logger.info(">>> Event modifier on cache-1 (5×, 5s)")
+            if i == 7:
+                oracle.update_client_location(-30.0, -60.0)
+                logger.info(">>> Client moved to (-30, -60)")
+            if i == 10:
+                oracle.trigger_traffic_burst(3, 3.0)
+                logger.info(">>> Traffic burst triggered")
+            logger.info(f"     Event active? {oracle.is_any_event_active()}")
+    except KeyboardInterrupt:
+        logger.info("Test interrupted.")
+    finally:
+        oracle.stop()
+        logger.info("Test finished.")
