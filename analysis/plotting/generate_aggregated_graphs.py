@@ -48,6 +48,18 @@ def _shade(ax, x, mean, std, color, alpha=FILL_ALPHA):
     ax.fill_between(x, lo, hi, color=color, alpha=alpha, linewidth=0)
 
 
+def _resolve_oracle_column(df: pd.DataFrame) -> str | None:
+    candidates = [
+        "dynamic_best_server_latency",
+        "experienced_latency_ms_ORACLE",
+        "experienced_latency_ms_oracle",
+    ]
+    for col in candidates:
+        if col in df.columns and not df[col].dropna().empty:
+            return col
+    return None
+
+
 def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
     if not os.path.exists(csv_path):
         logger.error(f"Aggregated CSV not found: {csv_path}")
@@ -59,6 +71,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
     if df.empty:
         logger.warning(f"Empty CSV: {csv_path}")
         return
+    df.columns = [str(c).strip() for c in df.columns]
     strat_key = "N/A"
     if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
         strat_key = df["rl_strategy"].dropna().iloc[0]
@@ -67,11 +80,12 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         if m:
             strat_key = m.group(1)
     strat_display = get_strategy_display_name(strat_key)
-    xlim = max_time if max_time else df["sim_time_client"].max()
-    df = df[df["sim_time_client"] <= xlim].copy()
-    if df.empty:
-        logger.warning(f"No data ≤ {xlim}s in {fname}")
-        return
+    if max_time is not None:
+        df = df[df["sim_time_client"] <= max_time].copy()
+        if df.empty:
+            logger.warning(f"No data ≤ {max_time}s in {fname}")
+            return
+    xlim = float(df["sim_time_client"].max()) if "sim_time_client" in df.columns else None
     has_std = "experienced_latency_ms_std_agg" in df.columns
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
     h, l = [], []
@@ -90,23 +104,31 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             _shade(
                 ax, sub["sim_time_client"], sub["experienced_latency_ms"], std, CB_BLACK
             )
-    if "dynamic_best_server_latency" in df.columns:
-        sub = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])
+    oracle_col = _resolve_oracle_column(df)
+    if oracle_col is not None:
+        sub = df.dropna(subset=["sim_time_client", oracle_col])
         (line,) = ax.plot(
             sub["sim_time_client"],
-            sub["dynamic_best_server_latency"],
+            sub[oracle_col],
             color=CB_RED,
-            lw=1.4,
-            ls="--",
+            lw=2.0,
+            ls=(0, (2, 2)),
+            zorder=20,
         )
         h.append(line)
         l.append("Avg. Oracle Optimal")
-        if has_std and "dynamic_best_server_latency_std_agg" in df.columns:
-            std = df.loc[sub.index, "dynamic_best_server_latency_std_agg"]
+        std_candidates = [
+            f"{oracle_col}_std_agg",
+            "dynamic_best_server_latency_std_agg",
+            "experienced_latency_ms_ORACLE_std_agg",
+        ]
+        std_col = next((c for c in std_candidates if c in df.columns), None)
+        if has_std and std_col is not None:
+            std = df.loc[sub.index, std_col]
             _shade(
                 ax,
                 sub["sim_time_client"],
-                sub["dynamic_best_server_latency"],
+                sub[oracle_col],
                 std,
                 CB_RED,
             )
@@ -265,7 +287,7 @@ def main():
         "--max_time",
         type=float,
         default=None,
-        help="Max simulation time (seconds) to plot.",
+        help="Optional max simulation time (seconds). If omitted, uses data max time.",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
