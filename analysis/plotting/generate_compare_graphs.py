@@ -13,6 +13,7 @@ from plot_utils import (
     get_strategy_style,
     extract_strategy_from_filename,
     STRATEGY_LEGEND_ORDER,
+    KNOWN_STRATEGY_KEYS,
 )
 
 logger = logging.getLogger("compare_strategies")
@@ -58,6 +59,8 @@ def plot_average_latency_comparison(
             strat = extract_strategy_from_filename(fname)
             if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
                 strat = df["rl_strategy"].dropna().iloc[0]
+            if strat not in KNOWN_STRATEGY_KEYS:
+                continue
             scenario_key = _extract_scenario_from_filename(fn)
             entries_by_scenario.setdefault(scenario_key, []).append((strat, fn, df))
         except Exception:
