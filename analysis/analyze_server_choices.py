@@ -29,11 +29,39 @@ ACTUAL_CACHE_NAMES_HYPHEN = [
     "video-streaming-cache-2",
     "video-streaming-cache-3",
 ]
-HEADER_BG = "#0072B2"
+HEADER_BG = "#4A4A4A"
 HEADER_FG = "#FFFFFF"
 ROW_EVEN_BG = "#F0F4F8"
 ROW_ODD_BG = "#FFFFFF"
 CELL_EDGE = "#CCCCCC"
+
+
+def _extract_scenario(fname: str) -> str:
+    m = re.search(r"_scenario\d+_([a-zA-Z0-9_]+)_average\.csv$", fname)
+    if m:
+        return m.group(1).lower()
+    m2 = re.search(r"_(baseline|mobility|spam)_average\.csv$", fname)
+    if m2:
+        return m2.group(1).lower()
+    return "all"
+
+
+def _build_accuracy_dataframe(results: dict) -> pd.DataFrame:
+    rows = []
+    ordered = [k for k in STRATEGY_LEGEND_ORDER if k in results]
+    ordered += sorted(k for k in results if k not in ordered)
+    for sk in ordered:
+        d = results[sk]
+        acc = d["correct"] / d["total"] * 100 if d["total"] else 0
+        rows.append(
+            {
+                "Strategy": get_strategy_display_name(sk),
+                "Correct (#)": d["correct"],
+                "Total (#)": d["total"],
+                "Accuracy (%)": f"{acc:.1f}%",
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _extract_strategy(fname_no_ext: str) -> str:
@@ -45,6 +73,7 @@ def analyze_server_choices(logs_dir, output_csv=None, output_img=None):
         logger.error(f"Directory not found: {logs_dir}")
         return
     results = {}
+    scenario_results = {}
     for fn in sorted(os.listdir(logs_dir)):
         if not (fn.startswith("log_") and fn.endswith("_average.csv")):
             continue
@@ -85,26 +114,20 @@ def analyze_server_choices(logs_dir, output_csv=None, output_img=None):
                 results.setdefault(sk, {"total": 0, "correct": 0})
                 results[sk]["total"] += total
                 results[sk]["correct"] += correct
+
+                scenario_key = _extract_scenario(fn)
+                scenario_results.setdefault(scenario_key, {})
+                scenario_results[scenario_key].setdefault(
+                    sk, {"total": 0, "correct": 0}
+                )
+                scenario_results[scenario_key][sk]["total"] += total
+                scenario_results[scenario_key][sk]["correct"] += correct
         except Exception as exc:
             logger.error(f"Error in {fn}: {exc}")
     if not results:
         logger.warning("No results — nothing to output.")
         return
-    rows = []
-    ordered = [k for k in STRATEGY_LEGEND_ORDER if k in results]
-    ordered += sorted(k for k in results if k not in ordered)
-    for sk in ordered:
-        d = results[sk]
-        acc = d["correct"] / d["total"] * 100 if d["total"] else 0
-        rows.append(
-            {
-                "Strategy": get_strategy_display_name(sk),
-                "Correct (#)": d["correct"],
-                "Total (#)": d["total"],
-                "Accuracy (%)": f"{acc:.1f}%",
-            }
-        )
-    df_res = pd.DataFrame(rows)
+    df_res = _build_accuracy_dataframe(results)
     logger.info("\n" + df_res.to_string(index=False))
     if output_csv:
         os.makedirs(os.path.dirname(output_csv), exist_ok=True)
@@ -114,6 +137,32 @@ def analyze_server_choices(logs_dir, output_csv=None, output_img=None):
         _save_table_image(
             df_res, output_img, title="Dynamic Best Server Choice Accuracy"
         )
+
+    if output_csv:
+        by_scenario_dir = os.path.join(os.path.dirname(output_csv), "by_scenario")
+        os.makedirs(by_scenario_dir, exist_ok=True)
+        for scenario_key, scenario_data in sorted(scenario_results.items()):
+            sdf = _build_accuracy_dataframe(scenario_data)
+            s_csv = os.path.join(
+                by_scenario_dir,
+                f"dynamic_best_choice_accuracy_{scenario_key}.csv",
+            )
+            sdf.to_csv(s_csv, index=False)
+            logger.info(f"Scenario CSV saved: {s_csv}")
+            if output_img:
+                by_scenario_img_dir = os.path.join(
+                    os.path.dirname(output_img), "by_scenario"
+                )
+                os.makedirs(by_scenario_img_dir, exist_ok=True)
+                s_img = os.path.join(
+                    by_scenario_img_dir,
+                    f"dynamic_best_choice_accuracy_{scenario_key}_table.png",
+                )
+                _save_table_image(
+                    sdf,
+                    s_img,
+                    title=f"Dynamic Best Server Choice Accuracy ({scenario_key.title()})",
+                )
 
 
 def _save_table_image(df, path_without_ext, title):
