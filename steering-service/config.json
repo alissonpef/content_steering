@@ -1,22 +1,19 @@
 {
   "strategies": {
     "epsilon_greedy": {
-      "epsilon": 0.05
+      "epsilon": 0.1
     },
     "ucb1": {
-      "c": 3.0
+      "c": 1.41
     },
     "d_ucb": {
-      "gamma_min": 0.1,
-      "gamma_max": 1.0,
-      "movement_weight": 0.4,
-      "latency_shock_weight": 0.6,
-      "comment": "Fixed gamma values: STILL=0.98, MOVEMENT=0.90, SHOCK=0.75 (hardcoded in d_ucb.py)"
+      "comment": "Fixed gamma values: STILL=0.97, MOVEMENT=0.85, SHOCK=0.70 (hardcoded in d_ucb.py). Exploration coeff=2.0 always. Movement cooldown=10s."
     },
     "linucb": {
-      "d": 9,
-      "alpha": 0.5,
-      "comment": "Fixed: Now forces exploration of all arms once before using UCB scores"
+      "d": 12,
+      "alpha": 1.5,
+      "gamma": 0.98,
+      "comment": "d=12: 12-dim context from oracle. Shared-parameter discounted LinUCB. gamma=0.98: mild decay for non-stationarity."
     }
   },
   "simulation": {
