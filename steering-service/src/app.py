@@ -53,12 +53,12 @@ def _configure_all_loggers(default_level=logging.WARNING):
 def _create_strategy_instance(strategy_name: str, monitor_ref, oracle_ref):
     cfg = CONFIG.get('strategies', {}).get(strategy_name, {})
     constructors = {
-        "epsilon_greedy":    lambda: EpsilonGreedy(epsilon=cfg.get('epsilon', 0.1),
+        "epsilon_greedy":    lambda: EpsilonGreedy(epsilon=cfg.get('epsilon', 0.3),
                                                    counts={}, values={},
                                                    monitor=monitor_ref, latency_oracle=oracle_ref),
         "no_steering":       lambda: NoSteeringSelector(monitor=monitor_ref, latency_oracle=oracle_ref),
         "random":            lambda: RandomSelector(monitor=monitor_ref, latency_oracle=oracle_ref),
-        "ucb1":              lambda: UCB1Selector(c=cfg.get('c', 2.0),
+        "ucb1":              lambda: UCB1Selector(c=cfg.get('c', 1.0),
                                                    monitor=monitor_ref, latency_oracle=oracle_ref),
         "linucb":            lambda: LinUCBSelector(d=cfg.get('d', 14), alpha=cfg.get('alpha', 0.5),
                                                      monitor=monitor_ref, latency_oracle=oracle_ref),
@@ -289,10 +289,7 @@ class Main:
     def _update_ducb_env_state(srv_name, oracle_lat, client_is_moving):
         if not isinstance(selector_instance, D_UCB):
             return None
-        shock = False
-        if srv_name and oracle_lat is not None:
-            shock = selector_instance._check_latency_shock(srv_name, oracle_lat)
-        selector_instance.update_environmental_state(client_is_moving, shock)
+        selector_instance.update_environmental_state(False, False)
         return selector_instance.current_gamma
     @staticmethod
     def _build_log_base(s_t, lat, lon, gamma_val):
