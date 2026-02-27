@@ -20,13 +20,12 @@ LOG_RAW_DIR = os.path.join(PROJECT_ROOT, "logs", "raw")
 BASE_URL = "https://localhost:30500"
 ALGORITHMS: list[str] = [
     "ucb1",
-    "d_ucb",
     "linucb",
     "epsilon_greedy",
     "oracle_best_choice",
     "random",
 ]
-SCENARIO_DURATION = 120
+SCENARIO_DURATION = 120 
 DEFAULT_RUNS = 1
 INIT_LAT, INIT_LON = -23.0, -47.0
 CACHE_COORDS = {
@@ -41,6 +40,9 @@ SPAM_SERVER = "video-streaming-cache-1"
 SPAM_START = 45
 SPAM_DURATION = 30
 SPAM_FACTOR = 15.0
+EXTREME_SPAM_START = 45
+EXTREME_SPAM_DURATION = 30
+EXTREME_SPAM_FACTOR = 250.0
 STARTUP_WAIT = 5
 SERVICE_POLL_TIMEOUT = 30
 TICK_INTERVAL = 1.0
@@ -108,6 +110,15 @@ SCENARIOS: list[Scenario] = [
         spam_start=SPAM_START,
         spam_duration=SPAM_DURATION,
         spam_factor=SPAM_FACTOR,
+    ),
+    Scenario(
+        name="Extreme Latency Shock (+1000x)",
+        suffix="_scenario4_spam_extreme",
+        raw_subdir="spam_extreme",
+        spam_server=SPAM_SERVER,
+        spam_start=EXTREME_SPAM_START,
+        spam_duration=EXTREME_SPAM_DURATION,
+        spam_factor=EXTREME_SPAM_FACTOR,
     ),
 ]
 
@@ -437,14 +448,15 @@ def _safe_run(cmd: list, label: str = "", timeout: int = 120) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Scenario-based experiment runner (3 scenarios × N algorithms × R runs).",
+        description="Scenario-based experiment runner (4 scenarios × N algorithms × R runs).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
                 "Scenarios:\n"
-                "  Default: All scenarios run for 300 s (5 minutes).\n"
+                "  Default: All scenarios run for configured duration.\n"
                 "  1  Baseline       — static client, stable network (300 s)\n"
             "  2  Mobility       — client moves toward Cache 2 (Chile) from t=120s (2:00) to t=180s (3:00)\n"
             "  3  Latency Shock  — 15× spike on Cache 1 from t=120s (2:00) to t=180s (3:00), then recovery\n"
+            "  4  Extreme Shock  — 1000× spike on Cache 1 (extreme stress test)\n"
             ),
     )
     parser.add_argument(
@@ -457,9 +469,9 @@ def main():
         "--scenarios",
         nargs="+",
         type=int,
-        default=[1, 2, 3],
-        choices=[1, 2, 3],
-        help="Which scenarios to run (default: 1 2 3)",
+        default=[1, 2, 3, 4],
+        choices=[1, 2, 3, 4],
+        help="Which scenarios to run (default: 1 2 3 4)",
     )
     parser.add_argument(
         "--runs",
