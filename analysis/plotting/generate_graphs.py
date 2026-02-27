@@ -15,6 +15,8 @@ from plot_utils import (
     get_server_color,
     get_server_label,
     get_strategy_display_name,
+    extract_strategy_from_filename,
+    KNOWN_STRATEGY_KEYS,
     CB_BLACK,
     CB_RED,
     CB_CYAN,
@@ -93,9 +95,10 @@ def generate_plots(csv_path: str, max_time: float = None):
     if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
         strat_key = df["rl_strategy"].dropna().iloc[0]
     else:
-        m = re.match(r"log_([a-zA-Z0-9_]+)", fname)
-        if m:
-            strat_key = m.group(1)
+        strat_key = extract_strategy_from_filename(fname)
+    if strat_key not in KNOWN_STRATEGY_KEYS:
+        logger.info(f"Skipping unsupported/legacy strategy file: {fname}")
+        return
     strat_display = get_strategy_display_name(strat_key)
     if "all_servers_oracle_latency_json" in df.columns:
         best_info = df.apply(find_dynamic_best, axis=1, result_type="expand")
@@ -232,7 +235,7 @@ def generate_plots(csv_path: str, max_time: float = None):
                 "Estimated Reward" if "ucb" in strat_key.lower() else "Estimated Value"
             )
             if strat_key == "epsilon_greedy":
-                ylabel = "Estimated Avg. Latency"
+                ylabel = "Estimated Reward"
             format_axes(
                 ax,
                 f"RL Estimated Values — {strat_display}",
@@ -247,10 +250,7 @@ def generate_plots(csv_path: str, max_time: float = None):
             logger.info("Plot 3 skipped: no parseable RL values.")
     counts_col = None
     ylabel4 = "Selections (Pulls)"
-    if strat_key == "d_ucb" and "rl_actual_counts_json" in df.columns:
-        counts_col = "rl_actual_counts_json"
-        ylabel4 = "Actual Selections (D-UCB)"
-    elif "rl_counts_json" in df.columns:
+    if "rl_counts_json" in df.columns:
         counts_col = "rl_counts_json"
     if counts_col and not df[counts_col].dropna().empty:
         parsed = parse_json_column(df[counts_col], prefix="data_")
