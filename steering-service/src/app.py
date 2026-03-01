@@ -27,7 +27,7 @@ STEERING_PORT = 30500
 PROJECT_ROOT_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
-LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "raw")
+LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "logs", "raw_data")
 CSV_HEADERS = [
     "timestamp_server",
     "sim_time_client",
