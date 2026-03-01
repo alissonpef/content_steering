@@ -16,7 +16,7 @@ from plot_utils import (
     extract_strategy_from_filename,
     KNOWN_STRATEGY_KEYS,
     CB_BLACK,
-    CB_RED,
+    CB_ORANGE,
     KNOWN_SERVER_KEYS_UNDERSCORE,
 )
 
@@ -24,9 +24,10 @@ logger = logging.getLogger("plot_aggregated_logs")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "consolidated_charts")
 FILL_ALPHA = 0.18
+SHOW_STD_BANDS = False
 
 
 def parse_json_column(series: pd.Series, prefix: str = "") -> pd.DataFrame:
@@ -43,6 +44,8 @@ def parse_json_column(series: pd.Series, prefix: str = "") -> pd.DataFrame:
 
 
 def _shade(ax, x, mean, std, color, alpha=FILL_ALPHA):
+    if not SHOW_STD_BANDS:
+        return
     if std is None or std.isna().all():
         return
     lo = mean - std
@@ -113,7 +116,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         (line,) = ax.plot(
             sub["sim_time_client"],
             sub[oracle_col],
-            color=CB_RED,
+            color=CB_ORANGE,
             lw=2.0,
             ls=(0, (2, 2)),
             zorder=20,
@@ -133,7 +136,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
                 sub["sim_time_client"],
                 sub[oracle_col],
                 std,
-                CB_RED,
+                CB_ORANGE,
             )
     if h:
         format_axes(
@@ -277,6 +280,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
 
 
 def main():
+    global OUTPUT_DIR
     parser = argparse.ArgumentParser(
         description="Generate publication-ready graphs from AGGREGATED CSV logs."
     )
@@ -289,8 +293,14 @@ def main():
         default=None,
         help="Optional max simulation time (seconds). If omitted, uses data max time.",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=OUTPUT_DIR,
+        help="Base output directory for generated figures.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    OUTPUT_DIR = args.output_dir
     apply_global_style()
     configure_logger(logger, args.verbose)
     if args.csv_filename:
