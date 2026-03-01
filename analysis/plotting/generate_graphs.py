@@ -27,8 +27,8 @@ logger = logging.getLogger("generate_graphs")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "logs", "raw")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results")
+RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "logs", "raw_data")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "individual_runs")
 ACTUAL_CACHE_NAMES_HYPHEN = [
     "video-streaming-cache-1",
     "video-streaming-cache-2",
@@ -340,6 +340,7 @@ def _resolve_csv(name: str):
 
 
 def main():
+    global OUTPUT_DIR
     parser = argparse.ArgumentParser(
         description="Generate per-run publication-ready graphs."
     )
@@ -355,8 +356,14 @@ def main():
         default=None,
         help="Optional max simulation time (seconds). If omitted, uses data max time.",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=OUTPUT_DIR,
+        help="Base output directory for generated figures.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    OUTPUT_DIR = args.output_dir
     apply_global_style()
     configure_logger(logger, args.verbose)
     if args.csv_argument:
