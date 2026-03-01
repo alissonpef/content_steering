@@ -209,10 +209,10 @@ python3 run_scenarios.py --skip-docker
 
 Log output by scenario:
 
-- `logs/raw/baseline/`
-- `logs/raw/mobility/`
-- `logs/raw/spam/`
-- `logs/raw/spam_extreme/`
+- `logs/raw_data/baseline/`
+- `logs/raw_data/mobility/`
+- `logs/raw_data/spam/`
+- `logs/raw_data/spam_extreme/`
 
 ## Analysis Pipeline
 ### 1) Aggregate logs by strategy
@@ -220,19 +220,19 @@ Log output by scenario:
 Example (baseline):
 
 ```bash
-python3 analysis/aggregate_logs.py linucb --input_dir logs/raw/baseline --output_dir logs/processed
+python3 analysis/aggregate_logs.py linucb --input_dir logs/raw_data/baseline --output_dir logs/aggregated_data
 ```
 
 ### 2) Individual-run graphs
 
 ```bash
-python3 analysis/plotting/generate_graphs.py logs/raw/baseline/log_linucb_1.csv
+python3 analysis/plotting/generate_graphs.py logs/raw_data/baseline/log_linucb_1.csv
 ```
 
 ### 3) Aggregated graphs
 
 ```bash
-python3 analysis/plotting/generate_aggregated_graphs.py logs/processed/log_linucb_average.csv
+python3 analysis/plotting/generate_aggregated_graphs.py logs/aggregated_data/log_linucb_average.csv
 ```
 
 ### 4) Comparative boxplots
@@ -253,7 +253,7 @@ python3 analysis/plotting/generate_compare_graphs.py
 python3 analysis/analyze_server_choices.py
 ```
 
-Results are saved in `results/` and processed logs in `logs/processed/`.
+Results are saved in `results/` and aggregated logs in `logs/aggregated_data/`.
 
 ## Project Structure (Summary)
 
@@ -262,12 +262,16 @@ Content-steering/
 ├── client/
 ├── dataset/
 ├── logs/
-│   ├── raw/
+│   ├── raw_data/
 │   │   ├── baseline/
 │   │   ├── mobility/
 │   │   ├── spam/
 │   │   └── spam_extreme/
-│   └── processed/
+│   └── aggregated_data/
+├── results/
+│   ├── individual_runs/
+│   ├── consolidated_charts/
+│   └── comparative_analysis/
 ├── analysis/
 ├── steering-service/
 ├── streaming-service/
