@@ -19,7 +19,7 @@ logger = logging.getLogger("generate_boxplots")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "boxplots")
 
 
