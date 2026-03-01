@@ -20,9 +20,8 @@ logger = logging.getLogger("compare_strategies")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results")
-FILL_ALPHA = 0.15
 WINDOW_SIZE = 5
 
 
@@ -99,24 +98,9 @@ def plot_average_latency_comparison(
                 linewidth=style["linewidth"],
                 linestyle=style["linestyle"],
                 alpha=style["alpha"],
-                zorder=style["zorder"],
+                zorder=(50 if strat_key == "oracle_best_choice" else style["zorder"]),
                 label=style["label"],
             )
-            std_col = metric + "_std_agg"
-            if std_col in subdf.columns:
-                std = (
-                    subdf.loc[sub.index, std_col]
-                    .rolling(WINDOW_SIZE, center=True, min_periods=1)
-                    .mean()
-                )
-                ax.fill_between(
-                    sub["sim_time_client"],
-                    y - std,
-                    y + std,
-                    color=style["color"],
-                    alpha=FILL_ALPHA,
-                    linewidth=0,
-                )
             plotted.add(strat_key)
 
         if not plotted:
@@ -140,7 +124,7 @@ def plot_average_latency_comparison(
         sort_legend_by_strategy(ax)
         fig.tight_layout()
 
-        scenario_output_dir = os.path.join(output_dir, "comparison_by_scenario", scenario_key)
+        scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
         base = metric.replace("experienced_latency_ms", "latency")
         save_figure(
             fig,
