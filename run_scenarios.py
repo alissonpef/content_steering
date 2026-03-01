@@ -16,7 +16,13 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 STEERING_SRC_DIR = os.path.join(PROJECT_ROOT, "steering-service", "src")
 ANALYSIS_DIR = os.path.join(PROJECT_ROOT, "analysis")
 PLOTTING_DIR = os.path.join(ANALYSIS_DIR, "plotting")
-LOG_RAW_DIR = os.path.join(PROJECT_ROOT, "logs", "raw")
+LOG_ROOT_DIR = os.path.join(PROJECT_ROOT, "logs")
+LOG_RAW_DATA_DIR = os.path.join(LOG_ROOT_DIR, "raw_data")
+LOG_AGGREGATED_DIR = os.path.join(LOG_ROOT_DIR, "aggregated_data")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+RESULTS_INDIVIDUAL_DIR = os.path.join(RESULTS_DIR, "individual_runs")
+RESULTS_CONSOLIDATED_DIR = os.path.join(RESULTS_DIR, "consolidated_charts")
+RESULTS_COMPARATIVE_DIR = os.path.join(RESULTS_DIR, "comparative_analysis")
 BASE_URL = "https://localhost:30500"
 ALGORITHMS: list[str] = [
     "ucb1",
@@ -104,7 +110,7 @@ SCENARIOS: list[Scenario] = [
 
 
 def _scenario_raw_dir(scenario: Scenario) -> str:
-    return os.path.join(LOG_RAW_DIR, scenario.raw_subdir)
+    return os.path.join(LOG_RAW_DATA_DIR, scenario.raw_subdir)
 
 
 def _api(method: str, path: str, **kwargs) -> Optional[requests.Response]:
@@ -356,9 +362,19 @@ def _run_analysis(strategies: list[str], scenarios: list[Scenario]):
         raw_dir = _scenario_raw_dir(sc)
         if not os.path.isdir(raw_dir):
             continue
+        scenario_results_dir = os.path.join(RESULTS_INDIVIDUAL_DIR, sc.raw_subdir)
         for fn in sorted(os.listdir(raw_dir)):
             if fn.startswith("log_") and fn.endswith(".csv") and "_average" not in fn:
-                _safe_run([py, graphs_script, os.path.join(raw_dir, fn)], label=fn)
+                _safe_run(
+                    [
+                        py,
+                        graphs_script,
+                        os.path.join(raw_dir, fn),
+                        "--output_dir",
+                        scenario_results_dir,
+                    ],
+                    label=fn,
+                )
     logger.info("  [2/6] Aggregating logs…")
     for strat in strategies:
         for sc in scenarios:
@@ -370,18 +386,14 @@ def _run_analysis(strategies: list[str], scenarios: list[Scenario]):
                 "--input_dir",
                 scenario_input_dir,
                 "--output_dir",
-                os.path.join(PROJECT_ROOT, "logs", "processed"),
+                LOG_AGGREGATED_DIR,
             ]
             ok = _safe_run(cmd, label=f"agg {strat} [{sc.raw_subdir}]")
             if not ok:
                 continue
-            default_output = os.path.join(
-                PROJECT_ROOT, "logs", "processed", f"log_{strat}_average.csv"
-            )
+            default_output = os.path.join(LOG_AGGREGATED_DIR, f"log_{strat}_average.csv")
             scenario_output = os.path.join(
-                PROJECT_ROOT,
-                "logs",
-                "processed",
+                LOG_AGGREGATED_DIR,
                 f"log_{strat}{sc.suffix}_average.csv",
             )
             if os.path.exists(default_output):
@@ -397,15 +409,46 @@ def _run_analysis(strategies: list[str], scenarios: list[Scenario]):
     for strat in strategies:
         for sc in scenarios:
             csv_name = f"log_{strat}{sc.suffix}_average.csv"
-            csv_path = os.path.join(PROJECT_ROOT, "logs", "processed", csv_name)
+            csv_path = os.path.join(LOG_AGGREGATED_DIR, csv_name)
             if os.path.exists(csv_path):
-                _safe_run([py, agg_graphs, csv_path], label=csv_name)
+                _safe_run(
+                    [
+                        py,
+                        agg_graphs,
+                        csv_path,
+                        "--output_dir",
+                        os.path.join(RESULTS_CONSOLIDATED_DIR, sc.raw_subdir),
+                    ],
+                    label=csv_name,
+                )
     logger.info("  [4/6] Boxplots…")
     _safe_run([py, boxplots_script])
     logger.info("  [5/6] Comparison graphs…")
-    _safe_run([py, compare_script])
+    _safe_run(
+        [
+            py,
+            compare_script,
+            "--agg_dir",
+            LOG_AGGREGATED_DIR,
+            "--output_dir",
+            RESULTS_DIR,
+        ]
+    )
     logger.info("  [6/6] Server choice accuracy analysis…")
-    _safe_run([py, accuracy_script])
+    _safe_run(
+        [
+            py,
+            accuracy_script,
+            "--logs_dir",
+            LOG_AGGREGATED_DIR,
+            "--output_csv",
+            os.path.join(LOG_AGGREGATED_DIR, "dynamic_best_choice_accuracy.csv"),
+            "--output_img",
+            os.path.join(RESULTS_DIR, "analysis", "dynamic_best_choice_accuracy_table.png"),
+            "--comparison_output_dir",
+            RESULTS_COMPARATIVE_DIR,
+        ]
+    )
     logger.info("  Analysis pipeline complete.\n")
 
 
@@ -505,7 +548,9 @@ def main():
     logger.info(f"  Total runs : {total_runs}")
     logger.info(f"  Est. time  : ~{total_secs // 60}m {total_secs % 60}s (+ overhead)")
     logger.info("=" * 70 + "\n")
-    os.makedirs(LOG_RAW_DIR, exist_ok=True)
+    os.makedirs(LOG_ROOT_DIR, exist_ok=True)
+    os.makedirs(LOG_RAW_DATA_DIR, exist_ok=True)
+    os.makedirs(RESULTS_INDIVIDUAL_DIR, exist_ok=True)
     for sc in selected_scenarios:
         os.makedirs(_scenario_raw_dir(sc), exist_ok=True)
     if not args.skip_docker:
@@ -563,7 +608,9 @@ def main():
         logger.info("Analysis skipped (--skip-analysis).")
     if not args.skip_docker:
         _docker_down()
-    logger.info("\nAll done. Check logs/raw/ for CSV data and results/ for figures.")
+    logger.info(
+        "\nAll done. Check logs/raw_data/<scenario>/ for CSV data and results/ for figures."
+    )
 
 
 if __name__ == "__main__":
