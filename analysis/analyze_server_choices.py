@@ -22,7 +22,7 @@ from plot_utils import (
 
 logger = logging.getLogger("analyze_server_choices")
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "processed")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "analysis")
 ACTUAL_CACHE_NAMES_HYPHEN = [
     "video-streaming-cache-1",
@@ -68,7 +68,12 @@ def _extract_strategy(fname_no_ext: str) -> str:
     return extract_strategy_from_filename(fname_no_ext)
 
 
-def analyze_server_choices(logs_dir, output_csv=None, output_img=None):
+def analyze_server_choices(
+    logs_dir,
+    output_csv=None,
+    output_img=None,
+    comparison_output_dir=None,
+):
     if not os.path.isdir(logs_dir):
         logger.error(f"Directory not found: {logs_dir}")
         return
@@ -164,6 +169,27 @@ def analyze_server_choices(logs_dir, output_csv=None, output_img=None):
                     title=f"Dynamic Best Server Choice Accuracy ({scenario_key.title()})",
                 )
 
+    if comparison_output_dir:
+        for scenario_key, scenario_data in sorted(scenario_results.items()):
+            sdf = _build_accuracy_dataframe(scenario_data)
+            scenario_dir = os.path.join(comparison_output_dir, scenario_key)
+            os.makedirs(scenario_dir, exist_ok=True)
+            scenario_csv = os.path.join(
+                scenario_dir,
+                f"algorithms_accuracy_comparison_{scenario_key}.csv",
+            )
+            sdf.to_csv(scenario_csv, index=False)
+            logger.info(f"Scenario comparison CSV saved: {scenario_csv}")
+            scenario_img = os.path.join(
+                scenario_dir,
+                f"algorithms_accuracy_comparison_{scenario_key}_table.png",
+            )
+            _save_table_image(
+                sdf,
+                scenario_img,
+                title=f"Algorithm Comparison ({scenario_key.title()})",
+            )
+
 
 def _save_table_image(df, path_without_ext, title):
     ncols, nrows = len(df.columns), len(df)
@@ -212,11 +238,21 @@ def main():
         "--output_img",
         default=os.path.join(OUTPUT_DIR, "dynamic_best_choice_accuracy_table.png"),
     )
+    parser.add_argument(
+        "--comparison_output_dir",
+        default=None,
+        help="If provided, saves per-scenario algorithm comparison tables under <dir>/<scenario>/.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     apply_global_style()
     configure_logger(logger, args.verbose)
-    analyze_server_choices(args.logs_dir, args.output_csv, args.output_img)
+    analyze_server_choices(
+        args.logs_dir,
+        args.output_csv,
+        args.output_img,
+        args.comparison_output_dir,
+    )
 
 
 if __name__ == "__main__":
