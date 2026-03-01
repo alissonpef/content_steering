@@ -38,11 +38,11 @@ STRATEGY_STYLE = {
     "linucb": {
         "label": "LinUCB (contextual)",
         "color": CB_MAGENTA,
-        "linewidth": 2.8,
+        "linewidth": 1.6,
         "linestyle": "-",
-        "zorder": 10,
+        "zorder": 5,
         "marker": None,
-        "alpha": 1.0,
+        "alpha": 0.85,
     },
     "ucb1": {
         "label": "UCB1",
@@ -64,7 +64,7 @@ STRATEGY_STYLE = {
     },
     "random": {
         "label": "Random",
-        "color": CB_RED,
+        "color": CB_GREY,
         "linewidth": 1.4,
         "linestyle": "--",
         "zorder": 3,
@@ -73,12 +73,12 @@ STRATEGY_STYLE = {
     },
     "oracle_best_choice": {
         "label": "Oracle Optimal",
-        "color": CB_BLACK,
-        "linewidth": 1.4,
-        "linestyle": ":",
-        "zorder": 4,
+        "color": CB_ORANGE,
+        "linewidth": 1.6,
+        "linestyle": (0, (2, 2)),
+        "zorder": 30,
         "marker": None,
-        "alpha": 0.80,
+        "alpha": 1.0,
     },
     "no_steering": {
         "label": "No Steering",
