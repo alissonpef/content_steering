@@ -11,6 +11,7 @@ from plot_utils import (
     get_strategy_style,
     extract_strategy_from_filename,
     STRATEGY_LEGEND_ORDER,
+    KNOWN_STRATEGY_KEYS,
     CB_RED,
     CB_BLACK,
 )
@@ -20,11 +21,22 @@ PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "boxplots")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results")
 
 
 def _extract_strategy(fname_no_ext: str) -> str:
     return extract_strategy_from_filename(fname_no_ext)
+
+
+def _extract_scenario_from_filename(filename: str) -> str:
+    name = os.path.splitext(filename)[0]
+    m = re.search(r"_scenario\d+_([a-zA-Z0-9_]+)_average$", name)
+    if m:
+        return m.group(1).lower()
+    m2 = re.search(r"_(baseline|mobility|spam|spam_extreme)_average$", name)
+    if m2:
+        return m2.group(1).lower()
+    return "all"
 
 
 def _apply_box_style(bp, color: str, is_hero: bool = False):
@@ -53,29 +65,7 @@ def _apply_box_style(bp, color: str, is_hero: bool = False):
         )
 
 
-def generate_individual_boxplot(df, strat_key, metric, output_dir):
-    if df.empty or metric not in df.columns or df[metric].dropna().empty:
-        return
-    style = get_strategy_style(strat_key)
-    fig, ax = plt.subplots(figsize=(3.5, 4.5))
-    bp = ax.boxplot(
-        df[metric].dropna(),
-        vert=True,
-        patch_artist=True,
-        labels=[style["label"]],
-        widths=0.45,
-    )
-    _apply_box_style(bp, style["color"], is_hero=(strat_key == "linucb"))
-    ax.set_title(f"Latency Distribution: {style['label']}", pad=8)
-    ax.set_ylabel("Latency (ms)")
-    ax.grid(True, axis="y")
-    fig.tight_layout()
-    save_figure(
-        fig, os.path.join(output_dir, f"boxplot_individual_{strat_key}_{metric}")
-    )
-
-
-def generate_comparison_boxplot(all_data: dict, metric, output_dir):
+def generate_comparison_boxplot(all_data: dict, metric: str, output_dir: str, scenario_key: str):
     ordered_keys = [k for k in STRATEGY_LEGEND_ORDER if k in all_data]
     ordered_keys += sorted(k for k in all_data if k not in ordered_keys)
     plot_data, labels, colors, heroes = [], [], [], []
@@ -92,7 +82,7 @@ def generate_comparison_boxplot(all_data: dict, metric, output_dir):
         logger.warning("No data for comparison boxplot.")
         return
     fig, ax = plt.subplots(figsize=(max(7.0, len(labels) * 1.4), 4.5))
-    bp = ax.boxplot(plot_data, vert=True, patch_artist=True, labels=labels, widths=0.5)
+    bp = ax.boxplot(plot_data, vert=True, patch_artist=True, tick_labels=labels, widths=0.5)
     for i, (box, color, hero) in enumerate(zip(bp["boxes"], colors, heroes)):
         box.set_facecolor(color)
         box.set_alpha(0.55 if not hero else 0.70)
@@ -113,14 +103,15 @@ def generate_comparison_boxplot(all_data: dict, metric, output_dir):
             markersize=3.5,
             alpha=0.6,
         )
-    nice = metric.replace("_", " ").replace("ms", "").strip().title()
-    ax.set_title(f"Latency Distribution by Strategy", pad=8)
+    ax.set_title(f"Strategy Latency Distribution ({scenario_key.title()})", pad=8)
     ax.set_ylabel("Latency (ms)")
     ax.set_xlabel("Strategy")
     plt.setp(ax.get_xticklabels(), rotation=25, ha="right")
     ax.grid(True, axis="y")
     fig.tight_layout()
-    save_figure(fig, os.path.join(output_dir, f"boxplot_comparison_all_{metric}"))
+    base = metric.replace("experienced_latency_ms", "latency")
+    scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
+    save_figure(fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_boxplot"))
 
 
 def main():
@@ -143,11 +134,10 @@ def main():
     args = parser.parse_args()
     apply_global_style()
     configure_logger(logger, args.verbose)
-    os.makedirs(args.output_dir, exist_ok=True)
     if not os.path.isdir(args.agg_dir):
         logger.error(f"Directory not found: {args.agg_dir}")
         return
-    all_data = {}
+    entries_by_scenario: dict[str, dict[str, pd.DataFrame]] = {}
     for fn in sorted(os.listdir(args.agg_dir)):
         if not (fn.startswith("log_") and fn.endswith("_average.csv")):
             continue
@@ -157,14 +147,23 @@ def main():
             if df.empty:
                 continue
             sk = _extract_strategy(os.path.splitext(fn)[0])
-            if sk == "Unknown":
+            if sk not in KNOWN_STRATEGY_KEYS:
                 continue
-            generate_individual_boxplot(df, sk, args.metric, args.output_dir)
-            all_data[sk] = df
+            if args.metric not in df.columns or df[args.metric].dropna().empty:
+                continue
+            scenario_key = _extract_scenario_from_filename(fn)
+            entries_by_scenario.setdefault(scenario_key, {})[sk] = df
         except Exception as exc:
             logger.error(f"Error processing {fn}: {exc}")
-    if all_data:
-        generate_comparison_boxplot(all_data, args.metric, args.output_dir)
+    if not entries_by_scenario:
+        logger.warning("No scenario data available for comparison boxplots.")
+        return
+
+    for scenario_key, all_data in sorted(entries_by_scenario.items()):
+        generate_comparison_boxplot(all_data, args.metric, args.output_dir, scenario_key)
+        logger.info(
+            f"Scenario boxplot saved to {os.path.join(args.output_dir, 'comparative_analysis', scenario_key)}"
+        )
     logger.info("Boxplot generation complete.")
 
 
