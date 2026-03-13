@@ -181,39 +181,6 @@ Open in browser:
 
 - `http://127.0.0.1:8001/client/index.html`
 
-## Automated Batch Execution (Scenarios)
-
-The `run_scenarios.py` script runs combinations of strategy × scenario × repetition.
-
-Current scenarios:
-
-1. Baseline (static)
-2. Mobility (spatial movement)
-3. Latency Shock / Spam (temporal event)
-4. Extreme Latency Shock (+1000x)
-
-Example (run everything, 1 repetition per combination):
-
-```bash
-python3 run_scenarios.py
-```
-
-Additional examples:
-
-```bash
-python3 run_scenarios.py --strategies linucb ucb1 epsilon_greedy --runs 3
-python3 run_scenarios.py --scenarios 1 2 --runs 2
-python3 run_scenarios.py --skip-analysis
-python3 run_scenarios.py --skip-docker
-```
-
-Log output by scenario:
-
-- `logs/raw_data/baseline/`
-- `logs/raw_data/mobility/`
-- `logs/raw_data/spam/`
-- `logs/raw_data/spam_extreme/`
-
 ## Analysis Pipeline
 ### 1) Aggregate logs by strategy
 
@@ -274,8 +241,7 @@ Content-steering/
 │   └── comparative_analysis/
 ├── analysis/
 ├── steering-service/
-├── streaming-service/
-└── run_scenarios.py
+└── streaming-service/
 ```
 
 ## Quick Troubleshooting
@@ -289,4 +255,4 @@ Content-steering/
 
 Demo video:
 
-- https://youtu.be/3l2sZNRFYSc
+- https://www.youtube.com/watch?v=HVMiex63daY
