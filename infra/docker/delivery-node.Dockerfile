@@ -1,0 +1,6 @@
+FROM caddy:latest
+
+WORKDIR /srv
+
+EXPOSE 80
+EXPOSE 443
