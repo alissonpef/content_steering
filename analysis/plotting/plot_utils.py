@@ -18,19 +18,19 @@ CB_MAGENTA = "#CC79A7"
 CB_GREY = "#999999"
 CB_BLACK = "#000000"
 SERVER_PALETTE = {
-    "video-streaming-cache-1": CB_GREEN,
-    "video-streaming-cache-2": CB_ORANGE,
-    "video-streaming-cache-3": CB_BLUE,
+    "delivery-node-1": CB_GREEN,
+    "delivery-node-2": CB_ORANGE,
+    "delivery-node-3": CB_BLUE,
 }
 SERVER_PALETTE_LIGHT = {
-    "video-streaming-cache-1": "#009E7340",
-    "video-streaming-cache-2": "#E69F0040",
-    "video-streaming-cache-3": "#0072B240",
+    "delivery-node-1": "#009E7340",
+    "delivery-node-2": "#E69F0040",
+    "delivery-node-3": "#0072B240",
 }
 SERVER_LABELS = {
-    "video-streaming-cache-1": "Cache 1 — Brazil",
-    "video-streaming-cache-2": "Cache 2 — Chile",
-    "video-streaming-cache-3": "Cache 3 — Colombia",
+    "delivery-node-1": "Node 1 — Brazil",
+    "delivery-node-2": "Node 2 — Chile",
+    "delivery-node-3": "Node 3 — Colombia",
     "DynamicBest": "Oracle Optimal",
     "N/A": "N/A",
 }
@@ -71,6 +71,24 @@ STRATEGY_STYLE = {
         "marker": None,
         "alpha": 0.75,
     },
+    "ppo_hybrid": {
+        "label": "PPO Hybrid",
+        "color": CB_CYAN,
+        "linewidth": 1.8,
+        "linestyle": "-",
+        "zorder": 7,
+        "marker": None,
+        "alpha": 0.90,
+    },
+    "sac_hybrid": {
+        "label": "SAC Hybrid",
+        "color": CB_RED,
+        "linewidth": 1.8,
+        "linestyle": "-",
+        "zorder": 7,
+        "marker": None,
+        "alpha": 0.90,
+    },
     "oracle_best_choice": {
         "label": "Oracle Optimal",
         "color": CB_ORANGE,
@@ -101,6 +119,8 @@ STRATEGY_STYLE = {
 }
 STRATEGY_LEGEND_ORDER = [
     "oracle_best_choice",
+    "ppo_hybrid",
+    "sac_hybrid",
     "linucb",
     "ucb1",
     "epsilon_greedy",
@@ -108,13 +128,15 @@ STRATEGY_LEGEND_ORDER = [
     "no_steering",
 ]
 KNOWN_SERVER_KEYS_UNDERSCORE = [
-    "video_streaming_cache_1",
-    "video_streaming_cache_2",
-    "video_streaming_cache_3",
+    "delivery_node_1",
+    "delivery_node_2",
+    "delivery_node_3",
 ]
 
 KNOWN_STRATEGY_KEYS = [
     "oracle_best_choice",
+    "ppo_hybrid",
+    "sac_hybrid",
     "epsilon_greedy",
     "no_steering",
     "linucb",
@@ -198,7 +220,7 @@ def format_axes(
     ylabel: str,
     *,
     legend_loc: str = "best",
-    xlim_max: float = None,
+    xlim_max: float | None = None,
     y_log_scale: bool = False,
     custom_handles=None,
     custom_labels=None,
@@ -277,8 +299,44 @@ def configure_logger(logger_instance, verbose: bool = False):
     level = logging.DEBUG if verbose else logging.INFO
     if not logger_instance.handlers:
         handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(name)s — %(levelname)s — %(message)s")
-        )
         logger_instance.addHandler(handler)
     logger_instance.setLevel(level)
+
+
+def parse_json_column(series, prefix: str = ""):
+    import json
+    import pandas as pd
+
+    rows, indices = [], []
+    for idx, raw in series.dropna().items():
+        try:
+            d = json.loads(raw) if isinstance(raw, str) else {}
+            if isinstance(d, dict):
+                rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
+                indices.append(idx)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows, index=indices)
+
+
+def extract_scenario_from_filename(filename_no_ext: str) -> str:
+    # Retorna o sufixo (cenário) de um nome de arquivo (ex: log_linucb_scenario1.csv -> scenario1)
+    name = filename_no_ext
+    if name.startswith("log_"):
+        name = name[4:]
+    if name.endswith("_average"):
+        name = name[: -len("_average")]
+    for key in sorted(KNOWN_STRATEGY_KEYS, key=len, reverse=True):
+        if name == key:
+            return "default"
+        if name.startswith(key + "_"):
+            return name[len(key) + 1 :]
+    m = re.match(r"([a-zA-Z0-9_]+)", name)
+    if not m:
+        return "Unknown"
+    candidate = m.group(1)
+    if candidate in KNOWN_STRATEGY_KEYS:
+        return "default"
+    return "Unknown"

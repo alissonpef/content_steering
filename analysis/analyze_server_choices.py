@@ -8,26 +8,23 @@ import matplotlib.pyplot as plt
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "plotting"))
-from plot_utils import (
+from plot_utils import (  # type: ignore
     apply_global_style,
     configure_logger,
     save_figure,
     get_strategy_display_name,
     extract_strategy_from_filename,
-    CB_BLACK,
-    CB_BLUE,
-    CB_GREY,
     STRATEGY_LEGEND_ORDER,
 )
 
 logger = logging.getLogger("analyze_server_choices")
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "analysis")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "analysis")
 ACTUAL_CACHE_NAMES_HYPHEN = [
-    "video-streaming-cache-1",
-    "video-streaming-cache-2",
-    "video-streaming-cache-3",
+    "delivery-node-1",
+    "delivery-node-2",
+    "delivery-node-3",
 ]
 HEADER_BG = "#4A4A4A"
 HEADER_FG = "#FFFFFF"
@@ -98,11 +95,11 @@ def analyze_server_choices(
             for _, row in df.iterrows():
                 dec = row["steering_decision_main_server"]
                 raw = row["all_servers_oracle_latency_json"]
-                if pd.isna(dec) or pd.isna(raw) or "N/A" in str(dec):
+                if pd.isna(dec) or pd.isna(raw) or "N/A" in str(dec):  # type: ignore
                     continue
                 total += 1
                 try:
-                    lats = json.loads(raw)
+                    lats = json.loads(str(raw))
                     valid = {
                         k.replace("_", "-"): v
                         for k, v in lats.items()
@@ -111,7 +108,7 @@ def analyze_server_choices(
                     }
                     if not valid:
                         continue
-                    if dec == min(valid, key=valid.get):
+                    if dec == min(valid, key=lambda k: float(valid[k])):
                         correct += 1
                 except (json.JSONDecodeError, TypeError):
                     continue
@@ -202,7 +199,7 @@ def _save_table_image(df, path_without_ext, title):
         colLabels=df.columns,
         cellLoc="center",
         loc="center",
-        bbox=[0, 0, 1, 1],
+        bbox=[0, 0, 1, 1],  # type: ignore
     )
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(10)

@@ -1,5 +1,7 @@
 import os
-import re
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
 import argparse
 import logging
@@ -21,35 +23,21 @@ from plot_utils import (
     CB_RED,
     CB_CYAN,
     KNOWN_SERVER_KEYS_UNDERSCORE,
+    parse_json_column,
 )
 
 logger = logging.getLogger("generate_graphs")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "logs", "raw_data")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "individual_runs")
+RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "raw")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "individual_runs")
 ACTUAL_CACHE_NAMES_HYPHEN = [
-    "video-streaming-cache-1",
-    "video-streaming-cache-2",
-    "video-streaming-cache-3",
+    "delivery-node-1",
+    "delivery-node-2",
+    "delivery-node-3",
 ]
 MAX_PLOT_TIME_SECONDS = 300
-
-
-def parse_json_column(series: pd.Series, prefix: str = "") -> pd.DataFrame:
-    rows, indices = [], []
-    for idx, raw in series.dropna().items():
-        try:
-            d = json.loads(raw) if isinstance(raw, str) else {}
-            if isinstance(d, dict):
-                rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
-                indices.append(idx)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows, index=indices)
 
 
 def find_dynamic_best(row):
@@ -66,13 +54,13 @@ def find_dynamic_best(row):
         }
         if not valid:
             return None, np.nan
-        best = min(valid, key=valid.get)
+        best = min(valid, key=lambda k: float(valid[k]))
         return best, valid[best]
     except Exception:
         return None, np.nan
 
 
-def generate_plots(csv_path: str, max_time: float = None):
+def generate_plots(csv_path: str, max_time: float | None = None):
     if not os.path.exists(csv_path):
         logger.error(f"CSV not found: {csv_path}")
         return
@@ -90,10 +78,14 @@ def generate_plots(csv_path: str, max_time: float = None):
         if df.empty:
             logger.warning(f"No data ≤ {max_time}s in {csv_path}")
             return
-    xlim = float(df["sim_time_client"].max()) if "sim_time_client" in df.columns else None
+    xlim = None
+    if "sim_time_client" in df.columns:
+        max_val = df["sim_time_client"].max()
+        if max_val is not None and not pd.isna(max_val):  # type: ignore
+            xlim = float(max_val)  # type: ignore
     strat_key = "N/A"
-    if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
-        strat_key = df["rl_strategy"].dropna().iloc[0]
+    if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
+        strat_key = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
     else:
         strat_key = extract_strategy_from_filename(fname)
     if strat_key not in KNOWN_STRATEGY_KEYS:
@@ -110,25 +102,36 @@ def generate_plots(csv_path: str, max_time: float = None):
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
     handles, labels = [], []
     if "experienced_latency_ms" in df.columns:
-        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
+        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])  # type: ignore
         if len(tmp) >= window:
             ma = (
                 tmp["experienced_latency_ms"]
                 .rolling(window, center=True, min_periods=1)
                 .mean()
             )
-            (h,) = ax.plot(tmp["sim_time_client"], ma, color=CB_BLACK, lw=1.6)
+            (h,) = ax.plot(
+                tmp["sim_time_client"].to_numpy(),
+                np.asarray(ma),
+                color=CB_BLACK,
+                lw=1.6,
+            )
             handles.append(h)
             labels.append(f"MA({window}s) — Chosen")
     if "dynamic_best_server_latency" in df.columns:
-        tmp = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])
+        tmp = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])  # type: ignore
         if len(tmp) >= window:
             ma = (
                 tmp["dynamic_best_server_latency"]
                 .rolling(window, center=True, min_periods=1)
                 .mean()
             )
-            (h,) = ax.plot(tmp["sim_time_client"], ma, color=CB_RED, lw=1.4, ls="--")
+            (h,) = ax.plot(
+                tmp["sim_time_client"].to_numpy(),
+                np.asarray(ma),
+                color=CB_RED,
+                lw=1.4,
+                ls="--",
+            )
             handles.append(h)
             labels.append(f"MA({window}s) — Oracle Optimal")
     if handles:
@@ -151,19 +154,19 @@ def generate_plots(csv_path: str, max_time: float = None):
         h2, l2 = [], []
         tmp = df.dropna(
             subset=["steering_decision_main_server", "sim_time_client"]
-        ).copy()
+        ).copy()  # type: ignore
         tmp = tmp.drop_duplicates(subset=["sim_time_client"], keep="first")
         all_entities = sorted(
             set(ACTUAL_CACHE_NAMES_HYPHEN)
             | set(tmp["steering_decision_main_server"].unique())
         )
         ent_map = {e: i for i, e in enumerate(all_entities)}
-        tmp["decision_int"] = tmp["steering_decision_main_server"].map(ent_map)
+        tmp["decision_int"] = tmp["steering_decision_main_server"].replace(ent_map)
         tmp2 = tmp.dropna(subset=["decision_int"])
         if not tmp2.empty:
             (h,) = ax.plot(
-                tmp2["sim_time_client"],
-                tmp2["decision_int"],
+                tmp2["sim_time_client"].to_numpy(),
+                tmp2["decision_int"].to_numpy(),
                 drawstyle="steps-post",
                 color=CB_CYAN,
                 lw=1.4,
@@ -173,12 +176,12 @@ def generate_plots(csv_path: str, max_time: float = None):
             h2.append(h)
             l2.append("Algorithm Choice")
         if "dynamic_best_server_name" in tmp.columns:
-            tmp["best_int"] = tmp["dynamic_best_server_name"].map(ent_map)
+            tmp["best_int"] = tmp["dynamic_best_server_name"].replace(ent_map)
             tmp3 = tmp.dropna(subset=["best_int"])
             if not tmp3.empty:
                 ax.scatter(
-                    tmp3["sim_time_client"],
-                    tmp3["best_int"],
+                    tmp3["sim_time_client"].to_numpy(),
+                    tmp3["best_int"].to_numpy(),
                     marker="x",
                     s=20,
                     color=CB_RED,
@@ -205,7 +208,10 @@ def generate_plots(csv_path: str, max_time: float = None):
         save_figure(fig, os.path.join(img_dir, "2_steering_decisions"))
     else:
         logger.info("Plot 2 skipped: no steering decision column.")
-    if "rl_values_json" in df.columns and not df["rl_values_json"].dropna().empty:
+    if (
+        "rl_values_json" in df.columns
+        and not pd.Series(df["rl_values_json"]).dropna().empty
+    ):
         parsed = parse_json_column(df["rl_values_json"], prefix="value_")
         if not parsed.empty:
             merged = pd.concat(
@@ -224,8 +230,8 @@ def generate_plots(csv_path: str, max_time: float = None):
                 sub = merged.dropna(subset=["sim_time_client", col])
                 if not sub.empty:
                     ax.plot(
-                        sub["sim_time_client"],
-                        sub[col],
+                        sub["sim_time_client"].to_numpy(),
+                        sub[col].to_numpy(),
                         color=get_server_color(sk),
                         lw=1.2,
                         alpha=0.8,
@@ -252,7 +258,7 @@ def generate_plots(csv_path: str, max_time: float = None):
     ylabel4 = "Selections (Pulls)"
     if "rl_counts_json" in df.columns:
         counts_col = "rl_counts_json"
-    if counts_col and not df[counts_col].dropna().empty:
+    if counts_col and not pd.Series(df[counts_col]).dropna().empty:
         parsed = parse_json_column(df[counts_col], prefix="data_")
         if not parsed.empty:
             merged = pd.concat(
@@ -271,8 +277,8 @@ def generate_plots(csv_path: str, max_time: float = None):
                 sub = merged.dropna(subset=["sim_time_client", col])
                 if not sub.empty:
                     ax.plot(
-                        sub["sim_time_client"],
-                        sub[col],
+                        sub["sim_time_client"].to_numpy(),
+                        sub[col].to_numpy(),
                         color=get_server_color(sk),
                         lw=1.2,
                         alpha=0.8,
@@ -290,7 +296,7 @@ def generate_plots(csv_path: str, max_time: float = None):
             save_figure(fig, os.path.join(img_dir, "4_rl_selection_counts"))
     if (
         "all_servers_oracle_latency_json" in df.columns
-        and not df["all_servers_oracle_latency_json"].dropna().empty
+        and not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
@@ -307,8 +313,8 @@ def generate_plots(csv_path: str, max_time: float = None):
                 sub = merged.dropna(subset=["sim_time_client", col])
                 if not sub.empty:
                     ax.plot(
-                        sub["sim_time_client"],
-                        sub[col],
+                        sub["sim_time_client"].to_numpy(),
+                        sub[col].to_numpy(),
                         color=get_server_color(sk),
                         lw=1.0,
                         alpha=0.6,
@@ -381,7 +387,9 @@ def main():
                     and fn.endswith(".csv")
                     and "_average" not in fn
                 ):
-                    generate_plots(os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time)
+                    generate_plots(
+                        os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time
+                    )
 
 
 if __name__ == "__main__":

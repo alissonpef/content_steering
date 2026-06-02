@@ -1,8 +1,8 @@
 import os
-import re
-import json
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import argparse
-import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 from plot_utils import (
@@ -15,32 +15,22 @@ from plot_utils import (
     get_strategy_display_name,
     extract_strategy_from_filename,
     KNOWN_STRATEGY_KEYS,
-    CB_BLACK,
     CB_ORANGE,
+    CB_BLACK,
     KNOWN_SERVER_KEYS_UNDERSCORE,
+    parse_json_column,
 )
+
+import logging
 
 logger = logging.getLogger("plot_aggregated_logs")
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 )
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "logs", "aggregated_data")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "consolidated_charts")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "consolidated_charts")
 FILL_ALPHA = 0.18
 SHOW_STD_BANDS = False
-
-
-def parse_json_column(series: pd.Series, prefix: str = "") -> pd.DataFrame:
-    rows, indices = [], []
-    for idx, raw in series.dropna().items():
-        try:
-            d = json.loads(raw) if isinstance(raw, str) else {}
-            if isinstance(d, dict):
-                rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
-                indices.append(idx)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return pd.DataFrame(rows, index=indices) if rows else pd.DataFrame()
 
 
 def _shade(ax, x, mean, std, color, alpha=FILL_ALPHA):
@@ -60,12 +50,12 @@ def _resolve_oracle_column(df: pd.DataFrame) -> str | None:
         "experienced_latency_ms_oracle",
     ]
     for col in candidates:
-        if col in df.columns and not df[col].dropna().empty:
+        if col in df.columns and not pd.Series(df[col]).dropna().empty:
             return col
     return None
 
 
-def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
+def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     if not os.path.exists(csv_path):
         logger.error(f"Aggregated CSV not found: {csv_path}")
         return
@@ -76,10 +66,12 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
     if df.empty:
         logger.warning(f"Empty CSV: {csv_path}")
         return
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [
+        c.strip() if isinstance(c, str) else str(c).strip() for c in df.columns
+    ]
     strat_key = "N/A"
-    if "rl_strategy" in df.columns and not df["rl_strategy"].dropna().empty:
-        strat_key = df["rl_strategy"].dropna().iloc[0]
+    if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
+        strat_key = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
     else:
         strat_key = extract_strategy_from_filename(fname)
     if strat_key not in KNOWN_STRATEGY_KEYS:
@@ -91,20 +83,25 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         if df.empty:
             logger.warning(f"No data ≤ {max_time}s in {fname}")
             return
-    xlim = float(df["sim_time_client"].max()) if "sim_time_client" in df.columns else None
+    assert isinstance(df, pd.DataFrame)
+    xlim = None
+    if "sim_time_client" in df.columns:
+        max_val = df["sim_time_client"].max()
+        if max_val is not None and not pd.isna(max_val):  # type: ignore
+            xlim = float(max_val)  # type: ignore
     has_std = "experienced_latency_ms_std_agg" in df.columns
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
-    h, l = [], []
+    h, labels = [], []
     if "experienced_latency_ms" in df.columns:
-        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
+        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])  # type: ignore
         (line,) = ax.plot(
-            sub["sim_time_client"],
-            sub["experienced_latency_ms"],
+            sub["sim_time_client"].to_numpy(),
+            sub["experienced_latency_ms"].to_numpy(),
             color=CB_BLACK,
             lw=1.6,
         )
         h.append(line)
-        l.append("Avg. Chosen Latency")
+        labels.append("Avg. Chosen Latency")
         if has_std and "experienced_latency_ms_std_agg" in df.columns:
             std = df.loc[sub.index, "experienced_latency_ms_std_agg"]
             _shade(
@@ -112,17 +109,17 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             )
     oracle_col = _resolve_oracle_column(df)
     if oracle_col is not None:
-        sub = df.dropna(subset=["sim_time_client", oracle_col])
+        sub = df.dropna(subset=["sim_time_client", oracle_col])  # type: ignore
         (line,) = ax.plot(
-            sub["sim_time_client"],
-            sub[oracle_col],
+            sub["sim_time_client"].to_numpy(),
+            sub[oracle_col].to_numpy(),
             color=CB_ORANGE,
             lw=2.0,
             ls=(0, (2, 2)),
             zorder=20,
         )
         h.append(line)
-        l.append("Avg. Oracle Optimal")
+        labels.append("Avg. Oracle Optimal")
         std_candidates = [
             f"{oracle_col}_std_agg",
             "dynamic_best_server_latency_std_agg",
@@ -145,7 +142,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             "Simulation Time (s)",
             "Latency (ms)",
             custom_handles=h,
-            custom_labels=l,
+            custom_labels=labels,
             legend_loc="upper right",
             xlim_max=xlim,
         )
@@ -167,11 +164,11 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             ylabel = "Avg. Estimated Reward"
         for col in value_cols:
             sk = col.replace("value_", "").replace("_", "-")
-            sub = df.dropna(subset=["sim_time_client", col])
+            sub = df.dropna(subset=["sim_time_client", col])  # type: ignore
             if not sub.empty:
                 ax.plot(
-                    sub["sim_time_client"],
-                    sub[col],
+                    sub["sim_time_client"].to_numpy(),
+                    sub[col].to_numpy(),
                     color=get_server_color(sk),
                     lw=1.2,
                     alpha=0.8,
@@ -195,12 +192,8 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
             xlim_max=xlim,
         )
         fig.tight_layout()
+        fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "2_avg_rl_estimated_values"))
-    actual_cnt = sorted(
-        c
-        for c in df.columns
-        if c.startswith("actual_count_") and not c.endswith("_std_agg")
-    )
     cnt_cols = sorted(
         c for c in df.columns if c.startswith("count_") and not c.endswith("_std_agg")
     )
@@ -211,11 +204,11 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
         for col in cols3:
             sk = col.replace(prefix3, "").replace("_", "-")
-            sub = df.dropna(subset=["sim_time_client", col])
+            sub = df.dropna(subset=["sim_time_client", col])  # type: ignore
             if not sub.empty:
                 ax.plot(
-                    sub["sim_time_client"],
-                    sub[col],
+                    sub["sim_time_client"].to_numpy(),
+                    sub[col].to_numpy(),
                     color=get_server_color(sk),
                     lw=1.2,
                     alpha=0.8,
@@ -242,7 +235,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
         save_figure(fig, os.path.join(img_dir, "3_avg_rl_selection_counts"))
     if (
         "all_servers_oracle_latency_json" in df.columns
-        and not df["all_servers_oracle_latency_json"].dropna().empty
+        and not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
@@ -259,8 +252,8 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float = None):
                 sub = merged.dropna(subset=["sim_time_client", col])
                 if not sub.empty:
                     ax.plot(
-                        sub["sim_time_client"],
-                        sub[col],
+                        sub["sim_time_client"].to_numpy(),
+                        sub[col].to_numpy(),
                         color=get_server_color(sk),
                         lw=1.0,
                         alpha=0.6,
