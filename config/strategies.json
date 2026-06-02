@@ -1,0 +1,73 @@
+{
+  "strategies": {
+    "epsilon_greedy": {
+      "epsilon": 0.3
+    },
+    "ucb1": {
+      "c": 2.5
+    },
+    "linucb": {
+      "d": 14,
+      "alpha": 1.5,
+      "comment": "LinUCB with arm-indicator features (Li et al. 2010). d=14 env context dim; internally d_total = n_arms + d. No decay."
+    },
+    "thompson_sampling": {
+      "d": 14,
+      "alpha": 2.0,
+      "reward_scale": 10.0,
+      "prior_precision": 0.1,
+      "learning_rate": 0.95,
+      "update_steps": 1,
+      "min_precision": 0.001,
+      "comment": "Contextual Thompson Sampling with online logistic updates and diagonal Laplace approximation."
+    },
+    "ppo_hybrid": {
+      "hidden_dim": 64,
+      "learning_rate": 0.001,
+      "gamma": 0.90,
+      "clip_ratio": 0.2,
+      "entropy_coef": 0.05,
+      "value_coef": 0.5,
+      "batch_size": 16,
+      "update_epochs": 8,
+      "reward_scale": 10.0,
+      "min_std": 0.1,
+      "max_std": 1.5,
+      "max_grad_norm": 1.0,
+      "random_state": 7,
+      "quality_levels": [0, 1, 2, 3, 4, 5],
+      "policy_path": "steering-service/models/ppo_hybrid_policy.npz",
+      "comment": "Hybrid PPO selector for adaptive bitrate choice and steering order."
+    },
+    "sac_hybrid": {
+      "hidden_dim": 64,
+      "critic_hidden_dim": 64,
+      "actor_learning_rate": 0.001,
+      "critic_learning_rate": 0.001,
+      "gamma": 0.90,
+      "tau": 0.1,
+      "entropy_coef": 0.5,
+      "batch_size": 16,
+      "replay_size": 512,
+      "update_steps": 2,
+      "reward_scale": 10.0,
+      "min_std": 0.1,
+      "max_std": 1.5,
+      "max_grad_norm": 1.0,
+      "random_state": 13,
+      "quality_levels": [0, 1, 2, 3, 4, 5],
+      "policy_path": "steering-service/models/sac_hybrid_policy.npz",
+      "comment": "Hybrid SAC selector for adaptive bitrate choice and content steering."
+    }
+  },
+  "simulation": {
+    "default_duration_seconds": 180,
+    "movement_threshold_km": 0.05,
+    "client_coords_update_interval_sec": 0.9
+  },
+  "monitor": {
+    "interval_seconds": 2,
+    "namespace": "default",
+    "kubernetes_label_selector": "app=delivery-node"
+  }
+}
