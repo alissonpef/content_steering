@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Content Steering - Simulation Interface</title>
-    <script src="./assets/js/dash.all.debug.js"></script>
+    <script src="https://cdn.dashjs.org/v4.7.4/dash.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <link href="./assets/css/bootstrap.min.css" rel="stylesheet" />
     <link href="./assets/css/style.css" rel="stylesheet" />
@@ -77,6 +78,27 @@
         <div class="row mt-2 mb-3 p-3 border rounded-3 simulation-controls">
           <div class="col-12 mb-3 pb-3 border-bottom">
             <h5>Simulation Setup</h5>
+            <div class="row align-items-center mb-3">
+              <div class="col-md-6">
+                <label for="simStrategy" class="fw-bold me-2"
+                  >RL Strategy:</label
+                >
+                <select
+                  id="simStrategy"
+                  class="form-select form-select-sm d-inline-block"
+                  style="width: 220px"
+                >
+                  <option value="" disabled selected>
+                    — Select a strategy —
+                  </option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <span id="strategyStatusBadge" class="badge bg-secondary"
+                  >No strategy selected</span
+                >
+              </div>
+            </div>
             <div class="row align-items-center mb-2">
               <div class="col-md-5">
                 <label class="me-2">Run Mode:</label>
@@ -175,7 +197,7 @@
           </div>
           <div class="col-12">
             <div class="row">
-              <div class="col-md-4 border-end">
+              <div class="col-md-4">
                 <h6 class="text-primary">Movement Event</h6>
                 <div class="mb-2">
                   <label for="simMovementTarget" class="d-block">Target:</label>
@@ -192,7 +214,7 @@
                     type="number"
                     id="simMovementStartTime"
                     value="45"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
                 <div class="mb-2">
@@ -201,14 +223,17 @@
                     type="number"
                     id="simMovementDuration"
                     value="60"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
               </div>
-              <div class="col-md-4 border-end">
-                <h6 class="text-danger">Spam Cache 1</h6>
+
+              <div class="col-md-4">
+                <h6 class="text-primary">Cache Spam Event 1</h6>
                 <div class="mb-2">
-                  <label for="simSpamTarget_1" class="d-block">Target:</label>
+                  <label for="simSpamTarget_1" class="d-block"
+                    >Target Cache:</label
+                  >
                   <select
                     id="simSpamTarget_1"
                     class="form-select form-select-sm w-100"
@@ -221,8 +246,8 @@
                   <input
                     type="number"
                     id="simSpamStartTime_1"
-                    value="45"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    value="20"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
                 <div class="mb-2">
@@ -230,15 +255,18 @@
                   <input
                     type="number"
                     id="simSpamDuration_1"
-                    value="135"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    value="20"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
               </div>
+
               <div class="col-md-4">
-                <h6 class="text-danger">Spam Cache 2</h6>
+                <h6 class="text-primary">Cache Spam Event 2</h6>
                 <div class="mb-2">
-                  <label for="simSpamTarget_2" class="d-block">Target:</label>
+                  <label for="simSpamTarget_2" class="d-block"
+                    >Target Cache:</label
+                  >
                   <select
                     id="simSpamTarget_2"
                     class="form-select form-select-sm w-100"
@@ -251,8 +279,8 @@
                   <input
                     type="number"
                     id="simSpamStartTime_2"
-                    value="105"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    value="80"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
                 <div class="mb-2">
@@ -260,8 +288,8 @@
                   <input
                     type="number"
                     id="simSpamDuration_2"
-                    value="75"
-                    class="form-control form-control-sm d-inline-block w-100"
+                    value="20"
+                    class="form-control form-control-sm w-100"
                   />
                 </div>
               </div>
@@ -301,7 +329,7 @@
                 id="manifest"
                 class="form-control form-control-sm"
                 placeholder="MPD URL"
-                value="https://video-streaming-cache-1/Eldorado/4sec/avc/manifest.mpd"
+                value="http://localhost:5000/node1/Eldorado/4sec/avc/manifest.mpd"
               />
               <button
                 type="button"
@@ -345,8 +373,8 @@
                 readonly
               />
               <br />
-              Movement: <span id="simMovementStatus">Inactive</span> <br />
-              Spam 1: <span id="simSpamStatus_1">Inactive</span> | Spam 2:
+              Movement: <span id="simMovementStatus">Inactive</span> | Spam 1:
+              <span id="simSpamStatus_1">Inactive</span> | Spam 2:
               <span id="simSpamStatus_2">Inactive</span>
             </div>
           </div>
@@ -426,6 +454,7 @@
       </div>
     </main>
     <script src="./assets/js/config.js"></script>
+    <script src="./assets/js/charts.js"></script>
     <script src="./assets/js/main.js"></script>
   </body>
 </html>

@@ -6,10 +6,10 @@ let simElapsedTime = 0;
 let simMovementActive = false;
 let simIntervalID_movement = null;
 let movementStarted = false;
-let simSpamActive_1 = false,
-  simSpamActive_2 = false;
-let simSpamEventSent_1 = false;
-let simSpamEventSent_2 = false;
+let simSpamActive_1 = false;
+let simSpamActive_2 = false;
+let simIntervalID_spam_1 = null;
+let simIntervalID_spam_2 = null;
 let simCurrentLat, simCurrentLon;
 let isSimulationRunning = false;
 let manifestSuccessfullyLoaded = false;
@@ -20,151 +20,24 @@ let onManifestErrorCallback = null;
 let onStreamInitForPlay = null;
 let onStreamInitForAutomaticPlay = null;
 let fragmentLoadStarts = {};
-let chartLatency = null;
-let chartServerChoice = null;
-const chartDataLatency = { labels: [], datasets: [] };
-const chartDataServer = { labels: [], datasets: [] };
-const SERVER_COLOR_MAP = {
-  "video-streaming-cache-1": "rgba(40,167,69,1)",
-  "video-streaming-cache-2": "rgba(255,153,0,1)",
-  "video-streaming-cache-3": "rgba(0,123,255,1)",
+let currentDecisionId = null;
+let isStalled = false;
+let lastStallStart = 0;
+let totalStallTime = 0;
+let selectedStrategy = "";
+
+const STRATEGY_LABELS = {
+  epsilon_greedy: "Epsilon-Greedy",
+  ucb1: "UCB1",
+  linucb: "LinUCB",
+  thompson_sampling: "Thompson Sampling",
+  ppo_hybrid: "PPO Hybrid",
+  sac_hybrid: "SAC Hybrid",
+  random: "Random",
+  best: "Best",
 };
-const SERVER_COLOR_MAP_BG = {
-  "video-streaming-cache-1": "rgba(40,167,69,0.15)",
-  "video-streaming-cache-2": "rgba(255,153,0,0.15)",
-  "video-streaming-cache-3": "rgba(0,123,255,0.15)",
-};
-const SERVER_NUMERIC_MAP = {
-  "video-streaming-cache-1": 1,
-  "video-streaming-cache-2": 2,
-  "video-streaming-cache-3": 3,
-};
-const MAX_CHART_POINTS = 300;
 function stopInterval(intervalId) {
   if (intervalId != null) clearInterval(intervalId);
-}
-function _initCharts() {
-  const ctxLat = document.getElementById("chartLatency");
-  const ctxSrv = document.getElementById("chartServerChoice");
-  if (!ctxLat || !ctxSrv) return;
-  if (chartLatency) {
-    chartLatency.destroy();
-    chartLatency = null;
-  }
-  if (chartServerChoice) {
-    chartServerChoice.destroy();
-    chartServerChoice = null;
-  }
-  chartDataLatency.labels = [];
-  chartDataLatency.datasets = [];
-  chartDataServer.labels = [];
-  chartDataServer.datasets = [];
-  for (const cacheName in CACHE_COORDS) {
-    chartDataLatency.datasets.push({
-      label: CACHE_COORDS[cacheName].label,
-      data: [],
-      borderColor: SERVER_COLOR_MAP[cacheName] || "grey",
-      backgroundColor:
-        SERVER_COLOR_MAP_BG[cacheName] || "rgba(128,128,128,0.1)",
-      borderWidth: 1.5,
-      pointRadius: 0,
-      tension: 0.3,
-      fill: false,
-    });
-  }
-  chartDataServer.datasets.push({
-    label: "Chosen Server",
-    data: [],
-    borderColor: "rgba(0,0,0,0.8)",
-    backgroundColor: "rgba(0,123,255,0.15)",
-    borderWidth: 2,
-    pointRadius: 3,
-    pointBackgroundColor: [],
-    stepped: "before",
-    fill: false,
-  });
-  chartLatency = new Chart(ctxLat, {
-    type: "line",
-    data: chartDataLatency,
-    options: {
-      responsive: true,
-      animation: { duration: 0 },
-      scales: {
-        x: {
-          title: { display: true, text: "Sim Time (s)" },
-          ticks: { maxTicksLimit: 20 },
-        },
-        y: {
-          title: { display: true, text: "Latency (ms)" },
-          beginAtZero: true,
-        },
-      },
-      plugins: {
-        legend: {
-          position: "top",
-          labels: { boxWidth: 12, font: { size: 11 } },
-        },
-      },
-      interaction: { mode: "index", intersect: false },
-    },
-  });
-  chartServerChoice = new Chart(ctxSrv, {
-    type: "line",
-    data: chartDataServer,
-    options: {
-      responsive: true,
-      animation: { duration: 0 },
-      scales: {
-        x: {
-          title: { display: true, text: "Sim Time (s)" },
-          ticks: { maxTicksLimit: 20 },
-        },
-        y: {
-          title: { display: true, text: "Server" },
-          min: 0.5,
-          max: 3.5,
-          ticks: {
-            stepSize: 1,
-            callback: function (value) {
-              const names = {
-                1: "Cache 1 (BR)",
-                2: "Cache 2 (CL)",
-                3: "Cache 3 (CO)",
-              };
-              return names[value] || "";
-            },
-          },
-        },
-      },
-      plugins: { legend: { display: false } },
-    },
-  });
-}
-function _updateCharts(simTime, latencies, decision) {
-  if (!chartLatency || !chartServerChoice) return;
-  if (chartDataLatency.labels.length >= MAX_CHART_POINTS) {
-    chartDataLatency.labels.shift();
-    chartDataLatency.datasets.forEach((ds) => ds.data.shift());
-    chartDataServer.labels.shift();
-    chartDataServer.datasets[0].data.shift();
-    chartDataServer.datasets[0].pointBackgroundColor.shift();
-  }
-  chartDataLatency.labels.push(simTime);
-  const serverNames = Object.keys(CACHE_COORDS);
-  for (let i = 0; i < serverNames.length; i++) {
-    const lat = latencies[serverNames[i]];
-    chartDataLatency.datasets[i].data.push(
-      lat != null ? parseFloat(lat.toFixed(1)) : null,
-    );
-  }
-  chartDataServer.labels.push(simTime);
-  const srvNum = SERVER_NUMERIC_MAP[decision] || null;
-  chartDataServer.datasets[0].data.push(srvNum);
-  chartDataServer.datasets[0].pointBackgroundColor.push(
-    SERVER_COLOR_MAP[decision] || "rgba(128,128,128,1)",
-  );
-  chartLatency.update("none");
-  chartServerChoice.update("none");
 }
 function setupPlayer() {
   const videoElement = document.querySelector("video");
@@ -189,6 +62,19 @@ function setupPlayer() {
     player.reset();
   }
   player = dashjs.MediaPlayer().create();
+
+  player.extend(
+    "RequestModifier",
+    function () {
+      return {
+        modifyRequest: function (request) {
+          return Promise.resolve(request);
+        },
+      };
+    },
+    true,
+  );
+
   player.initialize(videoElement, null, false);
   player.on(
     dashjs.MediaPlayer.events.FRAGMENT_LOADING_STARTED,
@@ -202,6 +88,18 @@ function setupPlayer() {
     dashjs.MediaPlayer.events.CONTENT_STEERING_REQUEST_COMPLETED,
     _onContentSteeringRequestCompleted,
   );
+  player.on(dashjs.MediaPlayer.events.BUFFER_EMPTY, () => {
+    if (!isStalled) {
+      isStalled = true;
+      lastStallStart = performance.now();
+    }
+  });
+  player.on(dashjs.MediaPlayer.events.BUFFER_LOADED, () => {
+    if (isStalled) {
+      isStalled = false;
+      totalStallTime += performance.now() - lastStallStart;
+    }
+  });
   player.on(dashjs.MediaPlayer.events.ERROR, (e) => {
     if (
       e.error &&
@@ -220,6 +118,9 @@ function setupPlayer() {
 }
 function init() {
   console.log("Initializing simulation...");
+  if (typeof DEFAULT_MANIFEST_URL !== "undefined") {
+    document.getElementById("manifest").value = DEFAULT_MANIFEST_URL;
+  }
   if (typeof CACHE_COORDS === "undefined") {
     console.error("CACHE_COORDS is not defined!");
     alert(
@@ -234,6 +135,7 @@ function init() {
   }
   setupPlayer();
   setupEventListeners();
+  loadStrategiesFromBackend();
   populateSelect("simMovementTarget", "Stay Still");
   populateSelect("simSpamTarget_1", "No Spam");
   populateSelect("simSpamTarget_2", "No Spam");
@@ -246,6 +148,44 @@ function init() {
   _resetUIOnly();
   document.getElementById("button_StartControlledSim").disabled = true;
   document.getElementById("button_StopSim").disabled = true;
+}
+function loadStrategiesFromBackend() {
+  fetch(`${STEERING_SERVER_URL}/strategies`)
+    .then((r) => r.json())
+    .then((data) => {
+      const select = document.getElementById("simStrategy");
+      select.innerHTML = "";
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.disabled = true;
+      defaultOpt.selected = true;
+      defaultOpt.textContent = "— Select a strategy —";
+      select.appendChild(defaultOpt);
+      (data.strategies || []).forEach((s) => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = STRATEGY_LABELS[s] || s;
+        select.appendChild(opt);
+      });
+      console.log("Strategies loaded from backend:", data.strategies);
+    })
+    .catch((err) => {
+      console.warn("Could not load strategies from backend:", err);
+      const select = document.getElementById("simStrategy");
+      select.innerHTML = "";
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.disabled = true;
+      defaultOpt.selected = true;
+      defaultOpt.textContent = "— Select a strategy —";
+      select.appendChild(defaultOpt);
+      for (const key in STRATEGY_LABELS) {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = STRATEGY_LABELS[key];
+        select.appendChild(opt);
+      }
+    });
 }
 function setupEventListeners() {
   document.getElementById("load-button").addEventListener("click", _load);
@@ -261,6 +201,17 @@ function setupEventListeners() {
   document
     .getElementById("simLoops")
     .addEventListener("input", updateCalculatedDuration);
+  document.getElementById("simStrategy").addEventListener("change", (e) => {
+    selectedStrategy = e.target.value;
+    const badge = document.getElementById("strategyStatusBadge");
+    if (badge) {
+      badge.textContent = STRATEGY_LABELS[selectedStrategy] || selectedStrategy;
+      badge.classList.remove("bg-secondary");
+      badge.classList.add("bg-primary");
+    }
+    document.getElementById("button_StartControlledSim").disabled =
+      !manifestSuccessfullyLoaded || !selectedStrategy;
+  });
   const runModeRadios = document.querySelectorAll('input[name="runMode"]');
   runModeRadios.forEach((radio) => {
     radio.addEventListener("change", (e) => {
@@ -319,7 +270,11 @@ function stopCurrentSimulation(
   simIntervalID_movement = null;
   simMovementActive = false;
   movementStarted = false;
+  stopInterval(simIntervalID_spam_1);
+  simIntervalID_spam_1 = null;
   simSpamActive_1 = false;
+  stopInterval(simIntervalID_spam_2);
+  simIntervalID_spam_2 = null;
   simSpamActive_2 = false;
   if (finishedNaturally && currentRunIndex < totalRunsToExecute) {
     _prepareNextRun();
@@ -343,7 +298,7 @@ function stopCurrentSimulation(
     currentRunIndex = 0;
   }, 500);
   document.getElementById("button_StartControlledSim").disabled =
-    !manifestSuccessfullyLoaded;
+    !manifestSuccessfullyLoaded || !selectedStrategy;
   document.getElementById("button_StopSim").disabled = true;
   document.getElementById("simMovementStatus").textContent = "Inactive";
   document.getElementById("simSpamStatus_1").textContent = "Inactive";
@@ -369,35 +324,23 @@ function _resetUIOnly() {
   currentSegmentServiceLocation = { audio: null, video: null };
   _updateActiveServerIcons();
   fragmentLoadStarts = {};
+  currentDecisionId = null;
+  isStalled = false;
+  totalStallTime = 0;
   document.getElementById("simMovementStatus").textContent = "Inactive";
   document.getElementById("simSpamStatus_1").textContent = "Inactive";
   document.getElementById("simSpamStatus_2").textContent = "Inactive";
   movementStarted = false;
-  simSpamEventSent_1 = false;
-  simSpamEventSent_2 = false;
+  simSpamActive_1 = false;
+  simSpamActive_2 = false;
 }
 function resetSimulationUIAndState() {
   stopCurrentSimulation(true);
   _resetUIOnly();
-  document.getElementById("button_StartControlledSim").disabled = true;
+  document.getElementById("button_StartControlledSim").disabled =
+    !manifestSuccessfullyLoaded || !selectedStrategy;
 }
-function startControlledSimulation() {
-  if (!manifestSuccessfullyLoaded) {
-    alert("Manifest not loaded. Please load an MPD first.");
-    return;
-  }
-  if (isSimulationRunning) {
-    return;
-  }
-  if (currentRunIndex === 0) {
-    const runsInput = document.getElementById("simRuns");
-    totalRunsToExecute = runsInput ? parseInt(runsInput.value) || 1 : 1;
-    currentRunIndex = 1;
-    fetch("https://steering-service:30500/reset_simulation", { method: "POST" })
-      .then((response) => response.json())
-      .then((data) => console.log("Initial backend reset:", data))
-      .catch((err) => console.error("Failed initial reset:", err));
-  }
+function _runSimulation() {
   console.log(`Starting Run ${currentRunIndex} of ${totalRunsToExecute}`);
   const runIndicator = document.getElementById("runIndicator");
   if (runIndicator) {
@@ -411,10 +354,12 @@ function startControlledSimulation() {
   movementStarted = false;
   simSpamActive_1 = false;
   simSpamActive_2 = false;
-  simSpamEventSent_1 = false;
-  simSpamEventSent_2 = false;
   stopInterval(simIntervalID_movement);
   simIntervalID_movement = null;
+  stopInterval(simIntervalID_spam_1);
+  simIntervalID_spam_1 = null;
+  stopInterval(simIntervalID_spam_2);
+  simIntervalID_spam_2 = null;
   if (simTimer) {
     clearInterval(simTimer);
     simTimer = null;
@@ -430,6 +375,65 @@ function startControlledSimulation() {
   player.play();
   console.log("Simulation started. Duration:", simConfig.duration);
   simTimer = setInterval(() => _onSimulationTick(simConfig), 1000);
+}
+function startControlledSimulation() {
+  if (!manifestSuccessfullyLoaded) {
+    alert("Manifest not loaded. Please load an MPD first.");
+    return;
+  }
+  if (!selectedStrategy) {
+    alert("Please select an RL strategy before starting.");
+    return;
+  }
+  if (isSimulationRunning) {
+    return;
+  }
+  if (currentRunIndex === 0) {
+    const runsInput = document.getElementById("simRuns");
+    totalRunsToExecute = runsInput ? parseInt(runsInput.value) || 1 : 1;
+    currentRunIndex = 1;
+    document.getElementById("button_StartControlledSim").disabled = true;
+    fetch(`${STEERING_SERVER_URL}/reset_simulation`, {
+      method: "POST",
+      body: JSON.stringify({ strategy: selectedStrategy }),
+      headers: { "Content-type": "application/json; charset=UTF-8" },
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        console.log("Initial backend reset:", data);
+        if (player) {
+          player.reset();
+          setupPlayer();
+          player.updateSettings({
+            streaming: {
+              buffer: { stableBufferTime: 4, bufferTimeAtTopQuality: 4 },
+              abr: { autoSwitchBitrate: { video: false } },
+            },
+          });
+          const mpdUrl = document.getElementById("manifest").value;
+          if (mpdUrl) {
+            const cb = () => {
+              manifestSuccessfullyLoaded = true;
+              _runSimulation();
+              player.off(dashjs.MediaPlayer.events.MANIFEST_LOADED, cb);
+            };
+            player.on(dashjs.MediaPlayer.events.MANIFEST_LOADED, cb);
+            player.attachSource(mpdUrl);
+          } else {
+            _runSimulation();
+          }
+        } else {
+          _runSimulation();
+        }
+      })
+      .catch((err) => {
+        console.error("Failed initial reset:", err);
+        document.getElementById("button_StartControlledSim").disabled = false;
+        currentRunIndex = 0;
+      });
+  } else {
+    _runSimulation();
+  }
 }
 function _prepareNextRun() {
   console.log(
@@ -447,8 +451,10 @@ function _prepareNextRun() {
         ri.classList.remove("bg-info");
         ri.classList.add("bg-warning");
       }
-      fetch("https://steering-service:30500/reset_simulation", {
+      fetch(`${STEERING_SERVER_URL}/reset_simulation`, {
         method: "POST",
+        body: JSON.stringify({ strategy: selectedStrategy }),
+        headers: { "Content-type": "application/json; charset=UTF-8" },
       })
         .then((r) => r.json())
         .then((data) => {
@@ -459,6 +465,7 @@ function _prepareNextRun() {
             player.updateSettings({
               streaming: {
                 buffer: { stableBufferTime: 4, bufferTimeAtTopQuality: 4 },
+                abr: { autoSwitchBitrate: { video: false } },
               },
             });
             const mpdUrl = document.getElementById("manifest").value;
@@ -482,7 +489,7 @@ function _prepareNextRun() {
           currentRunIndex = 0;
           isSimulationRunning = false;
           document.getElementById("button_StartControlledSim").disabled =
-            !manifestSuccessfullyLoaded;
+            !manifestSuccessfullyLoaded || !selectedStrategy;
         });
     }, 1500);
   }, 500);
@@ -553,16 +560,16 @@ function _readSimulationConfig() {
       parseInt(document.getElementById("simMovementStartTime").value) || 60,
     movementDuration:
       parseInt(document.getElementById("simMovementDuration").value) || 60,
-    spamTarget1: document.getElementById("simSpamTarget_1").value,
-    spamStartTime1:
-      parseInt(document.getElementById("simSpamStartTime_1").value) || 60,
-    spamDuration1:
-      parseInt(document.getElementById("simSpamDuration_1").value) || 120,
-    spamTarget2: document.getElementById("simSpamTarget_2").value,
-    spamStartTime2:
-      parseInt(document.getElementById("simSpamStartTime_2").value) || 120,
-    spamDuration2:
-      parseInt(document.getElementById("simSpamDuration_2").value) || 60,
+    spamTarget_1: document.getElementById("simSpamTarget_1").value,
+    spamStartTime_1:
+      parseInt(document.getElementById("simSpamStartTime_1").value) || 20,
+    spamDuration_1:
+      parseInt(document.getElementById("simSpamDuration_1").value) || 20,
+    spamTarget_2: document.getElementById("simSpamTarget_2").value,
+    spamStartTime_2:
+      parseInt(document.getElementById("simSpamStartTime_2").value) || 80,
+    spamDuration_2:
+      parseInt(document.getElementById("simSpamDuration_2").value) || 20,
   };
 }
 function _onSimulationTick(cfg) {
@@ -593,44 +600,59 @@ function _onSimulationTick(cfg) {
     document.getElementById("simMovementStatus").textContent =
       `Moving (to ${CACHE_COORDS[cfg.movementTarget]?.label || cfg.movementTarget})`;
   }
+
   if (
-    cfg.spamTarget1 !== "none" &&
-    simElapsedTime >= cfg.spamStartTime1 &&
-    !simSpamEventSent_1
+    cfg.spamTarget_1 !== "none" &&
+    simElapsedTime >= cfg.spamStartTime_1 &&
+    !simSpamActive_1 &&
+    simElapsedTime < cfg.spamStartTime_1 + cfg.spamDuration_1
   ) {
     simSpamActive_1 = true;
-    simSpamEventSent_1 = true;
-    startSimulatedCacheSpam(cfg.spamTarget1, 1);
+    startSimulatedCacheSpam(cfg.spamTarget_1, 1);
     document.getElementById("simSpamStatus_1").textContent =
-      `Spamming (${CACHE_COORDS[cfg.spamTarget1]?.label || cfg.spamTarget1})`;
+      `Spamming (${CACHE_COORDS[cfg.spamTarget_1]?.label || cfg.spamTarget_1})`;
   }
   if (
     simSpamActive_1 &&
-    simElapsedTime >= cfg.spamStartTime1 + cfg.spamDuration1
+    simElapsedTime >= cfg.spamStartTime_1 + cfg.spamDuration_1
   ) {
+    stopInterval(simIntervalID_spam_1);
+    simIntervalID_spam_1 = null;
     simSpamActive_1 = false;
     document.getElementById("simSpamStatus_1").textContent = "Inactive";
   }
+
   if (
-    cfg.spamTarget2 !== "none" &&
-    simElapsedTime >= cfg.spamStartTime2 &&
-    !simSpamEventSent_2
+    cfg.spamTarget_2 !== "none" &&
+    simElapsedTime >= cfg.spamStartTime_2 &&
+    !simSpamActive_2 &&
+    simElapsedTime < cfg.spamStartTime_2 + cfg.spamDuration_2
   ) {
     simSpamActive_2 = true;
-    simSpamEventSent_2 = true;
-    startSimulatedCacheSpam(cfg.spamTarget2, 2);
+    startSimulatedCacheSpam(cfg.spamTarget_2, 2);
     document.getElementById("simSpamStatus_2").textContent =
-      `Spamming (${CACHE_COORDS[cfg.spamTarget2]?.label || cfg.spamTarget2})`;
+      `Spamming (${CACHE_COORDS[cfg.spamTarget_2]?.label || cfg.spamTarget_2})`;
   }
   if (
     simSpamActive_2 &&
-    simElapsedTime >= cfg.spamStartTime2 + cfg.spamDuration2
+    simElapsedTime >= cfg.spamStartTime_2 + cfg.spamDuration_2
   ) {
+    stopInterval(simIntervalID_spam_2);
+    simIntervalID_spam_2 = null;
     simSpamActive_2 = false;
     document.getElementById("simSpamStatus_2").textContent = "Inactive";
   }
-  reportLocationToSteering(simCurrentLat, simCurrentLon);
-  fetch("https://steering-service:30500/sim_state")
+
+  let activeSpamTargets = [];
+  if (simSpamActive_1) activeSpamTargets.push(cfg.spamTarget_1);
+  if (simSpamActive_2) activeSpamTargets.push(cfg.spamTarget_2);
+
+  reportLocationToSteering(
+    simCurrentLat,
+    simCurrentLon,
+    activeSpamTargets.length > 0 ? activeSpamTargets : null,
+  );
+  fetch(`${STEERING_SERVER_URL}/sim_state`)
     .then((r) => r.json())
     .then((state) => {
       _updateCharts(
@@ -694,8 +716,12 @@ function startSimulatedMovement(
   };
   simIntervalID_movement = setInterval(intervalFunc, 1000);
 }
+
 function startSimulatedCacheSpam(targetCacheName, phaseId) {
   if (!CACHE_COORDS[targetCacheName]) {
+    console.warn(
+      `[SPAM ${phaseId}] Target cache ${targetCacheName} not found.`,
+    );
     if (phaseId === 1) {
       simSpamActive_1 = false;
       document.getElementById("simSpamStatus_1").textContent = "Error";
@@ -705,50 +731,67 @@ function startSimulatedCacheSpam(targetCacheName, phaseId) {
     }
     return;
   }
-  const spamDurationElementId = `simSpamDuration_${phaseId}`;
-  const spamDurationValue = parseInt(
-    document.getElementById(spamDurationElementId)?.value,
-  );
-  if (isNaN(spamDurationValue) || spamDurationValue <= 0) {
-    if (phaseId === 1) {
-      simSpamActive_1 = false;
-      document.getElementById("simSpamStatus_1").textContent =
-        "Error: Invalid Duration";
-    } else {
-      simSpamActive_2 = false;
-      document.getElementById("simSpamStatus_2").textContent =
-        "Error: Invalid Duration";
-    }
-    return;
-  }
-  const payload = {
-    server_name: targetCacheName,
-    factor: 10.0,
-    duration_seconds: spamDurationValue,
+  const nodeMap = {
+    "delivery-node-1": "node1",
+    "delivery-node-2": "node2",
+    "delivery-node-3": "node3",
   };
-  fetch("https://steering-service:30500/latency_event", {
-    method: "POST",
-    body: JSON.stringify(payload),
-    headers: { "Content-type": "application/json; charset=UTF-8" },
-  })
-    .then((response) =>
-      response
-        .text()
-        .then((text) => ({ ok: response.ok, text, status: response.status })),
-    )
-    .then((data) => {})
-    .catch((err) => {});
+  const nodePath = nodeMap[targetCacheName] || "node1";
+  const hostUrl = `${window.location.origin}/${nodePath}/Eldorado/4sec/avc/750000/seg-1.m4s?spam_ts=${Date.now()}&phase=${phaseId}`;
+
+  const currentPhaseActiveFlag =
+    phaseId === 1 ? () => simSpamActive_1 : () => simSpamActive_2;
+  const setSpamIntervalId = (val) => {
+    if (phaseId === 1) simIntervalID_spam_1 = val;
+    else simIntervalID_spam_2 = val;
+  };
+  const currentSpamIntervalId =
+    phaseId === 1 ? simIntervalID_spam_1 : simIntervalID_spam_2;
+  const myIntervalClearer = () => {
+    if (phaseId === 1) {
+      stopInterval(simIntervalID_spam_1);
+      simIntervalID_spam_1 = null;
+    } else {
+      stopInterval(simIntervalID_spam_2);
+      simIntervalID_spam_2 = null;
+    }
+  };
+
+  function sendSpamRequest() {
+    if (isSimulationRunning && currentPhaseActiveFlag()) {
+      fetch(hostUrl).catch(() => {});
+    } else {
+      myIntervalClearer();
+    }
+  }
+
+  if (currentSpamIntervalId) clearInterval(currentSpamIntervalId);
+  setSpamIntervalId(setInterval(sendSpamRequest, 100));
 }
-function reportLocationToSteering(lat, lon) {
+
+function reportLocationToSteering(lat, lon, spamTarget) {
   if (!isSimulationRunning || lat === undefined || lon === undefined) return;
-  const payload = { time: simElapsedTime, lat: lat, long: lon };
-  fetch("https://steering-service:30500/coords", {
+  const payload = {
+    time: simElapsedTime,
+    lat: lat,
+    long: lon,
+    spam_target: spamTarget || null,
+  };
+  fetch(`${STEERING_SERVER_URL}/coords`, {
     method: "POST",
     body: JSON.stringify(payload),
     headers: { "Content-type": "application/json; charset=UTF-8" },
   }).catch((error) => {});
 }
-function reportLatencyToSteering(lat, lon, clientMeasuredLatency, serverUsed) {
+function reportLatencyToSteering(
+  lat,
+  lon,
+  clientMeasuredLatency,
+  serverUsed,
+  decisionId,
+  stallTime,
+  qualityLevel,
+) {
   if (!isSimulationRunning || lat === undefined || lon === undefined) return;
   if (clientMeasuredLatency === undefined || serverUsed === undefined) return;
   const payload = {
@@ -757,8 +800,11 @@ function reportLatencyToSteering(lat, lon, clientMeasuredLatency, serverUsed) {
     long: lon,
     rt: clientMeasuredLatency,
     server_used: serverUsed,
+    decision_id: decisionId,
+    stall_time: stallTime,
+    quality_level: qualityLevel,
   };
-  fetch("https://steering-service:30500/coords", {
+  fetch(`${STEERING_SERVER_URL}/coords`, {
     method: "POST",
     body: JSON.stringify(payload),
     headers: { "Content-type": "application/json; charset=UTF-8" },
@@ -787,6 +833,7 @@ function _load() {
         stableBufferTime: 4,
         bufferTimeAtTopQuality: 4,
       },
+      abr: { autoSwitchBitrate: { video: false } },
     },
   });
   _resetUIOnly();
@@ -809,7 +856,11 @@ function _load() {
             );
           onStreamInitForAutomaticPlay = function () {
             if (player.getActiveStream() && player.isReady()) {
-              if (manifestSuccessfullyLoaded && !isSimulationRunning) {
+              if (
+                manifestSuccessfullyLoaded &&
+                !isSimulationRunning &&
+                selectedStrategy
+              ) {
                 startControlledSimulation();
               }
             }
@@ -830,10 +881,11 @@ function _load() {
             );
           } else {
             document.getElementById("button_StartControlledSim").disabled =
-              false;
+              !selectedStrategy;
           }
         } else {
-          document.getElementById("button_StartControlledSim").disabled = false;
+          document.getElementById("button_StartControlledSim").disabled =
+            !selectedStrategy;
         }
         updateCalculatedDuration();
       }
@@ -913,11 +965,16 @@ function _onFragmentLoadingCompleted(e) {
       delete fragmentLoadStarts[key];
       if (isSimulationRunning) {
         if (simCurrentLat !== undefined && simCurrentLon !== undefined) {
+          const stallToReport = totalStallTime;
+          totalStallTime = 0;
           reportLatencyToSteering(
             simCurrentLat,
             simCurrentLon,
             clientMeasuredLatencyMs,
             serverUsed,
+            currentDecisionId,
+            stallToReport,
+            player.getQualityFor("video"),
           );
         }
       }
@@ -934,6 +991,12 @@ function _onContentSteeringRequestCompleted(e) {
         decodeURIComponent(e.url);
     if (e.currentSteeringResponseData) {
       const data = e.currentSteeringResponseData;
+      if (data["DECISION-ID"]) {
+        currentDecisionId = data["DECISION-ID"];
+      }
+      if (data["RL-QUALITY-LEVEL"] !== undefined) {
+        player.setQualityFor("video", data["RL-QUALITY-LEVEL"]);
+      }
       const priority = data["PATHWAY-PRIORITY"] || data.pathwayPriority || [];
       document.getElementById(`steering-decision-display`).textContent =
         priority.map((p) => CACHE_COORDS[p]?.label || p).join(" > ");
