@@ -1,258 +1,123 @@
 # Content Steering with Reinforcement Learning (DASH)
 
-Research project for simulating Content Steering in DASH streaming with multiple decision strategies, controlled non-stationary scenarios, and an automated analysis pipeline.
+Research project for simulating Content Steering in DASH streaming with multiple decision strategies, using a Kubernetes-native environment to evaluate performance against real-world network latency.
 
 ## Overview
 
 This repository implements:
 
-- A Flask steering service with strategies:
+- A FastAPI-based steering service with strategies:
   - `epsilon_greedy`
   - `ucb1`
   - `linucb` (contextual bandit)
+  - `thompson_sampling` (contextual Thompson Sampling)
+  - `ppo_hybrid` (hybrid PPO policy for bitrate + steering)
+  - `sac_hybrid` (hybrid SAC policy for bitrate + steering)
   - `oracle_best_choice`
   - `random`
   - `no_steering`
-- A dynamic latency oracle with:
-  - geographic impact (distance/proximity)
-  - temporal jitter
-  - latency events (shock/spam)
-  - route/network variation and movement smoothing
-- 3 simulated cache servers in containers (Caddy) with local HTTPS
-- Manual execution (browser + player) and automated batch execution (`run_scenarios.py`)
-- Analysis pipeline for log aggregation and graph generation
+- A Kubernetes-native architecture (using Kind) that utilizes real cluster latencies to train and evaluate RL algorithms.
+- 3 simulated cache servers (Delivery Nodes) using Caddy for local HTTPS.
+- Analysis pipeline for log aggregation and graph generation.
 
 ## Architecture
 
-- `streaming-service/`: Docker cache services (3 nodes)
-- `steering-service/`: Flask API + RL strategies + latency oracle
-- `client/`: web interface to run browser simulations
-- `analysis/`: aggregation and graph scripts
-- `run_scenarios.py`: scenario-based experiment orchestrator
+        +-------------------+         +-------------------------------------+
+        |   Browser (Host)  |         |            Kubernetes (Kind)        |
+        | (localhost:5000)  |         |                                     |
+        +--------+----------+         |   +-----------------------------+   |
+                 | proxy              |   |    dash-client (Nginx)      |   |
+                 v                    |   |      (Port 80)              |   |
+        +-------------------+         |   +-----+-----------------+-----+   |
+        |      Gateway      |-------->|         |                 |         |
+        | (Nginx :5000->80) |         |  /steering/         /node[1-3]/     |
+        +-------------------+         |         |                 |         |
+                                      |         v                 v         |
+                                      |  +---------------+ +--------------+ |
+                                      |  |steering-server| |delivery-nodes| |
+                                      |  | (FastAPI SVC) | | (Caddy SVC)  | |
+                                      |  +---------------+ +--------------+ |
+                                      +-------------------------------------+
 
-## Supported Environments
+- `steering-service/`: FastAPI + RL strategies + real latency monitoring.
+- `client/`: Web interface to run browser simulations via Dash.js.
+- `analysis/`: Aggregation and graph generation scripts for experiment logging.
+- `delivery-nodes/`, `gateway/`, `manifests/`: K8s configurations and deployment manifests.
 
-You can use this project in two ways:
+## Prerequisites
 
-1. Run locally on Linux (your own environment)
-2. Run inside the provided VM (dataset already included)
+* **Linux / WSL2**
+* **Python 3.12+**
+* **Docker**
+* **Kind** (Kubernetes IN Docker)
+* **kubectl**
+* **mkcert** (For local HTTPS generation)
 
-### Option A — Local Linux
-
-#### Prerequisites
-
-- Linux
-- Python 3.10+
-- Docker + Docker Compose plugin (`docker compose`)
-- `mkcert`
-- Modern web browser
-
-Optional (recommended):
-
-- Your user in the `docker` group to avoid using `sudo` in all Docker commands.
-
-#### Dataset
+## Dataset
 
 Download the dataset from:
 
 - https://drive.google.com/drive/folders/1_Mh1JDoRroikzJnjCsZ-Qgqdbx-XP78N?usp=sharing
 
-Then place the `dataset` folder at the project root, like this:
+Place the `dataset` folder at the project root, like this:
 
 - `./dataset/Eldorado/4sec/avc/manifest.mpd`
 
-#### Installation
+## Quick Start (Kubernetes Mode)
 
-At the project root:
+The project runs exclusively in a Kind (Kubernetes) cluster to simulate real network dynamics and caching behaviors.
 
+### 1. Start the environment
+Bring up the entire cluster and services with the setup script, specifying your desired strategy:
 ```bash
-python -m pip install --upgrade pip
-python -m pip install -r steering-service/requirements.txt
+./infra/scripts/setup_k8s.sh linucb
+```
+*(Other strategies: `ucb1`, `epsilon_greedy`, `ppo_hybrid`, `sac_hybrid`, `thompson_sampling`)*
+
+### 2. Accessing the Interface
+Access the Gateway from your browser:
+http://localhost:5000
+
+If needed, forward the port manually:
+```bash
+kubectl port-forward deployment/gateway 5000:80
 ```
 
-### Option B — Preconfigured VM (dataset already included)
-
-VM download link:
-
-- https://drive.google.com/file/d/1mCB585muebdJIN6yXXbioIoD1762svy3T/view?usp=sharing
-
-Important note:
-
-- The code inside the VM may be outdated.
-- The correct flow is to clone the current repository version and reuse the dataset already present in the VM.
-
-Recommended steps inside the VM:
-
+### 3. Stop the Environment
+Remove the cluster:
 ```bash
-cd ~/Documents
-git clone https://github.com/alissonpef/Content-Steering content-steering
+./infra/scripts/stop_k8s.sh
 ```
-
-Now move/copy the existing `dataset` folder from the VM into the new clone. Common example:
-
-```bash
-cp -r ~/Documents/content-steering-tutorial/dataset ~/Documents/content-steering/
-```
-
-Then enter the new project and install dependencies:
-
-```bash
-cd ~/Documents/content-steering
-python -m pip install --upgrade pip
-python -m pip install -r steering-service/requirements.txt
-```
-
-Important for both scenarios:
-
-- Containers mount `../dataset` into `/srv` through `streaming-service/docker-compose.yml`.
-- If `dataset` is not in the active repository root, the caches start but cannot serve media.
-
-## Local Certificates (HTTPS)
-
-At the project root:
-
-```bash
-./create_certs.sh
-```
-
-This script generates certificates for:
-
-- `video-streaming-cache-1`
-- `video-streaming-cache-2`
-- `video-streaming-cache-3`
-- `steering-service`
-
-## Start and Stop Caches (Docker)
-
-At the project root:
-
-```bash
-sudo ./starting_streaming.sh
-```
-
-The script:
-
-- starts the 3 cache containers
-- detects container IP addresses
-- updates `/etc/hosts` with cache hosts and `steering-service`
-
-To stop:
-
-```bash
-sudo ./stop_streaming.sh
-```
-
-## Manual Execution (Interactive Mode)
-
-Use 2 terminals.
-
-### Terminal 1 — Steering service
-
-At the project root:
-
-```bash
-python3 steering-service/src/app.py --strategy linucb
-```
-
-Other available strategies:
-
-```bash
-python3 steering-service/src/app.py --strategy ucb1
-python3 steering-service/src/app.py --strategy epsilon_greedy
-python3 steering-service/src/app.py --strategy oracle_best_choice
-python3 steering-service/src/app.py --strategy random
-python3 steering-service/src/app.py --strategy no_steering
-```
-
-Useful options:
-
-- `-v` or `--verbose` for detailed logs
-- `--log_suffix <suffix>` to distinguish logs
-
-### Terminal 2 — Serve web client
-
-At the project root:
-
-```bash
-python3 -m http.server 8001
-```
-
-Open in browser:
-
-- `http://127.0.0.1:8001/client/index.html`
 
 ## Analysis Pipeline
+
 ### 1) Aggregate logs by strategy
 
-Example (baseline):
-
 ```bash
-python3 analysis/aggregate_logs.py linucb --input_dir logs/raw_data/baseline --output_dir logs/aggregated_data
+python3 analysis/aggregate_logs.py linucb --input_dir data/logs/raw/baseline --output_dir data/logs/aggregated
 ```
 
 ### 2) Individual-run graphs
 
 ```bash
-python3 analysis/plotting/generate_graphs.py logs/raw_data/baseline/log_linucb_1.csv
+python3 analysis/plotting/generate_graphs.py data/logs/raw/baseline/log_linucb_1.csv
 ```
 
-### 3) Aggregated graphs
-
-```bash
-python3 analysis/plotting/generate_aggregated_graphs.py logs/aggregated_data/log_linucb_average.csv
-```
-
-### 4) Comparative boxplots
+### 3) Comparative boxplots
 
 ```bash
 python3 analysis/plotting/generate_boxplots.py
 ```
 
-### 5) Time-series comparison across strategies
-
-```bash
-python3 analysis/plotting/generate_compare_graphs.py
-```
-
-### 6) Server-choice accuracy analysis
+### 4) Server-choice accuracy analysis
 
 ```bash
 python3 analysis/analyze_server_choices.py
 ```
 
-Results are saved in `results/` and aggregated logs in `logs/aggregated_data/`.
-
-## Project Structure (Summary)
-
-```text
-Content-steering/
-├── client/
-├── dataset/
-├── logs/
-│   ├── raw_data/
-│   │   ├── baseline/
-│   │   ├── mobility/
-│   │   ├── spam/
-│   │   └── spam_extreme/
-│   └── aggregated_data/
-├── results/
-│   ├── individual_runs/
-│   ├── consolidated_charts/
-│   └── comparative_analysis/
-├── analysis/
-├── steering-service/
-└── streaming-service/
-```
-
-## Quick Troubleshooting
-
-- **Caches start but video does not load:** verify `dataset/` is at the project root.
-- **Hostname/certificate error:** run `./create_certs.sh` and `./starting_streaming.sh` again.
-- **Docker permission denied:** adjust Docker user permissions or run Docker commands with `sudo`.
-- **No module named ...:** reinstall `requirements.txt`.
+Results are saved in `data/results/` and aggregated logs in `data/logs/aggregated/`.
 
 ## Demo
 
-Demo video:
-
+Demo video of a previous version:
 - https://www.youtube.com/watch?v=HVMiex63daY

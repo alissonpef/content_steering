@@ -1,7 +1,7 @@
+.venv/
 __pycache__/
+.pytest_cache/
+.uv/
+certs/
+data/
 dataset/
-results/
-logs/
-
-*.pyc
-*.pem
