@@ -629,6 +629,14 @@ function _onSimulationTick(cfg) {
   }
   simElapsedTime++;
   document.getElementById("simCurrentTimeDisplay").textContent = simElapsedTime;
+  const vid = document.querySelector('video');
+  if (vid) {
+      if (vid.paused && vid.readyState >= 2) {
+          console.log("[simTick] Video is paused! Forcing play...");
+          vid.play().catch(e => console.error("Force play failed:", e));
+      }
+  }
+
   if (
     cfg.movementTarget !== "none" &&
     simElapsedTime >= cfg.movementStartTime &&
