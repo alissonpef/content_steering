@@ -144,23 +144,22 @@ class ThompsonSamplingSelector(Selector):
 
         reward_value = max(0.0, feedback_value)
         target = self._reward_to_target(reward_value)
-        mean = self._means[chosen_arm_name]
-        precision = self._precisions[chosen_arm_name]
         x_sq = np.square(context_vector)
-        updated_mean = mean.copy()
-        curvature = 0.0
+        updated_mean = self._means[chosen_arm_name].copy()
+        updated_precision = self._precisions[chosen_arm_name].copy()
 
         for _ in range(self.update_steps):
             prediction = self._sigmoid(float(updated_mean @ context_vector))
             curvature = prediction * (1.0 - prediction)
-            denominator = np.maximum(precision + curvature * x_sq, self.min_precision)
+            updated_precision = np.maximum(
+                updated_precision + curvature * x_sq, self.min_precision
+            )
             updated_mean = (
                 updated_mean
                 - (self.learning_rate * (prediction - target) * context_vector)
-                / denominator
+                / updated_precision
             )
 
-        updated_precision = np.maximum(precision + curvature * x_sq, self.min_precision)
         self._means[chosen_arm_name] = updated_mean
         self._precisions[chosen_arm_name] = updated_precision
         self.counts[chosen_arm_name] = self.counts.get(chosen_arm_name, 0) + 1

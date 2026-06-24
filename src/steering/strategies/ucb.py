@@ -27,11 +27,13 @@ class UCB1Selector(Selector):
                 self.initialize(nodes)
         if not self.nodes:
             return []
-        for arm_name in self.nodes:
-            if self.counts.get(arm_name, 0) == 0:
-                other_nodes = [n for n in self.nodes if n != arm_name]
-                random.shuffle(other_nodes)
-                return [arm_name] + other_nodes
+        unvisited = [arm for arm in self.nodes if self.counts.get(arm, 0) == 0]
+        if unvisited:
+            random.shuffle(unvisited)
+            chosen = unvisited[0]
+            others = [n for n in self.nodes if n != chosen]
+            random.shuffle(others)
+            return [chosen] + others
         ucb_scores = {}
         current_total_pulls_for_log = (
             self.total_pulls if self.total_pulls > 0 else sum(self.counts.values())

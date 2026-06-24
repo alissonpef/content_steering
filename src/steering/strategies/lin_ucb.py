@@ -58,12 +58,20 @@ class LinUCBSelector(Selector):
         if set(contexts.keys()) != set(self.nodes):
             self.initialize(list(contexts.keys()))
 
-        for arm in self.nodes:
-            if arm in contexts and self.pull_counts.get(arm, 0) == 0:
-                other_arms = [a for a in self.nodes if a != arm]
-                random.shuffle(other_arms)
-                selector_logger.info(f"[LinUCB] Exploring untested arm: {arm}")
-                return [arm] + other_arms
+        unvisited_arms = [
+            arm
+            for arm in self.nodes
+            if arm in contexts and self.pull_counts.get(arm, 0) == 0
+        ]
+        if unvisited_arms:
+            random.shuffle(unvisited_arms)
+            chosen = unvisited_arms[0]
+            other_arms = [a for a in self.nodes if a != chosen]
+            random.shuffle(other_arms)
+            selector_logger.info(
+                f"[LinUCB] Exploring untested arm (randomized): {chosen}"
+            )
+            return [chosen] + other_arms
 
         ucb_scores: dict = {}
         for arm in self.nodes:
