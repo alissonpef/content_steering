@@ -4,17 +4,18 @@
       "epsilon": 0.3
     },
     "ucb1": {
-      "c": 2.5
+      "c": 0.5,
+      "comment": "UCB1 exploration constant. c=0.5 balances exploration and exploitation for short simulations (~120-180s with ~4s segments = ~30-45 pulls). Theoretical guarantee: O(sqrt(K*T*log(T))) regret bound holds for any c>0."
     },
     "linucb": {
       "d": 14,
-      "alpha": 1.5,
-      "comment": "LinUCB with arm-indicator features (Li et al. 2010). d=14 env context dim; internally d_total = n_arms + d. No decay."
+      "alpha": 0.3,
+      "comment": "LinUCB (Li et al. 2010) with arm-indicator features. d=14 env context dim; d_total = n_arms + d. alpha=0.3 tightens the confidence ellipsoid so the algorithm exploits the learned theta after initial exploration. Typical values in literature: 0.2-0.5 for normalised contexts."
     },
     "thompson_sampling": {
       "d": 14,
       "alpha": 2.0,
-      "reward_scale": 10.0,
+      "reward_scale": 1.0,
       "prior_precision": 0.1,
       "learning_rate": 0.95,
       "update_steps": 1,
@@ -30,7 +31,7 @@
       "value_coef": 0.5,
       "batch_size": 16,
       "update_epochs": 8,
-      "reward_scale": 10.0,
+      "reward_scale": 1.0,
       "min_std": 0.1,
       "max_std": 1.5,
       "max_grad_norm": 1.0,
@@ -50,7 +51,7 @@
       "batch_size": 16,
       "replay_size": 512,
       "update_steps": 2,
-      "reward_scale": 10.0,
+      "reward_scale": 1.0,
       "min_std": 0.1,
       "max_std": 1.5,
       "max_grad_norm": 1.0,
@@ -58,6 +59,12 @@
       "quality_levels": [0, 1, 2, 3, 4, 5],
       "policy_path": "steering-service/models/sac_hybrid_policy.npz",
       "comment": "Hybrid SAC selector for adaptive bitrate choice and content steering."
+    },
+    "random": {
+      "comment": "Selects a random server at each step. Baseline for exploration-only behavior."
+    },
+    "best": {
+      "comment": "Always selects the server with the lowest observed latency. Oracle upper-bound baseline."
     }
   },
   "simulation": {
