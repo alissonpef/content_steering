@@ -40,9 +40,13 @@ def update_client_position(lat, lon) -> bool:
             last_client_coords["lat"] = lat
             last_client_coords["lon"] = lon
             last_client_coords["time"] = now
-            app_logger.warning(f"[CONTEXT] Client coords updated to ({lat}, {lon}) (moving: {client_is_moving})")
+            app_logger.warning(
+                f"[CONTEXT] Client coords updated to ({lat}, {lon}) (moving: {client_is_moving})"
+            )
         else:
-            app_logger.warning(f"[CONTEXT] Client coords update throttled. Elapsed: {elapsed:.2f}s < {CLIENT_COORDS_UPDATE_INTERVAL_SEC}s")
+            app_logger.warning(
+                f"[CONTEXT] Client coords update throttled. Elapsed: {elapsed:.2f}s < {CLIENT_COORDS_UPDATE_INTERVAL_SEC}s"
+            )
     elif last_client_coords["lat"] is None:
         last_client_coords["lat"] = lat
         last_client_coords["lon"] = lon
@@ -53,12 +57,28 @@ def update_client_position(lat, lon) -> bool:
 
 def update_spam_target(target: str | list[str] | None):
     global active_spam_targets
+    raw_targets = []
     if isinstance(target, list):
-        active_spam_targets = [t for t in target if t]
+        raw_targets = [t for t in target if t]
     elif target:
-        active_spam_targets = [target]
-    else:
-        active_spam_targets = []
+        raw_targets = [target]
+
+    normalized = []
+    for t in raw_targets:
+        if t == "No Spam":
+            continue
+        tl = t.lower()
+        if "cache 1" in tl or "node-1" in tl or "node1" in tl:
+            normalized.append("delivery-node-1")
+        elif "cache 2" in tl or "node-2" in tl or "node2" in tl:
+            normalized.append("delivery-node-2")
+        elif "cache 3" in tl or "node-3" in tl or "node3" in tl:
+            normalized.append("delivery-node-3")
+        else:
+            normalized.append(t)
+
+    active_spam_targets.clear()
+    active_spam_targets.extend(normalized)
     if active_spam_targets:
         app_logger.warning(f"[CONTEXT] Active spam targets: {active_spam_targets}")
 
@@ -77,14 +97,17 @@ def get_dynamic_penalty(node_name: str, monitor) -> float:
             coords.get("lat"),
             coords.get("lon"),
         )
-        penalty += distance_km / 35.0
-        app_logger.warning(f"[CONTEXT] Node {node_name} penalty: {penalty:.2f} ms (distance: {distance_km:.2f} km, coords: {coords})")
+        propagation_ms = (distance_km / 200_000.0) * 1000.0 * 2.0
+        penalty += propagation_ms
+        app_logger.warning(
+            f"[CONTEXT] Node {node_name} propagation penalty: {penalty:.2f} ms "
+            f"(distance: {distance_km:.2f} km, coords: {coords})"
+        )
     else:
-        app_logger.warning(f"[CONTEXT] Node {node_name} has no coordinates in monitor! Coords dict keys: {list(node_coords.keys())}")
-
-    if node_name in active_spam_targets:
-        penalty += 150.0
-        app_logger.warning(f"[CONTEXT] Node {node_name} penalty increased by 150.0 ms due to active spam.")
+        app_logger.warning(
+            f"[CONTEXT] Node {node_name} has no coordinates in monitor! "
+            f"Coords dict keys: {list(node_coords.keys())}"
+        )
 
     return penalty
 
@@ -115,13 +138,19 @@ def get_simple_context(
         coords.get("lat"),
         coords.get("lon"),
     )
-    propagation_ms = (distance_km / 200_000.0) * 1000.0 * 2.2
+    propagation_ms = (distance_km / 200_000.0) * 1000.0 * 2.0
     t = time.localtime()
     time_of_day = (t.tm_hour + t.tm_min / 60.0) / 24.0
     counts = getattr(selector_instance, "counts", {}) or {}
     total_counts = max(1, sum(counts.values()) if counts else 1)
     popularity = counts.get(normalized_name, 0) / total_counts
     observed = 1.0 if normalized_name in last_real_latencies else 0.0
+
+    is_spam_target = 1.0 if normalized_name in active_spam_targets else 0.0
+    if is_spam_target:
+        app_logger.warning(
+            f"[CONTEXT] Node {normalized_name} flagged as spam target in context vector."
+        )
 
     return np.array(
         [
@@ -130,7 +159,7 @@ def get_simple_context(
             min(1.0, distance_km / 12_000.0),
             min(1.0, latency / 300.0),
             min(1.0, recent_std / 40.0),
-            0.0,
+            is_spam_target,
             time_of_day,
             min(1.0, get_dynamic_penalty(normalized_name, monitor) / 200.0),
             0.0,

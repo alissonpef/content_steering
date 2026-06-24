@@ -17,7 +17,7 @@ class DashParser:
     ) -> dict[str, typing.Any]:
         message: dict[str, typing.Any] = {
             "VERSION": 1,
-            "TTL": 5,
+            "TTL": 2,
             "RELOAD-URI": f"{uri}{request.url.path}",
         }
         pathway_priority_nodes = [f"{node[0]}" for node in nodes] if nodes else []

@@ -6,6 +6,10 @@ import asyncio
 import logging
 import numpy as np
 import uuid
+
+from contextlib import asynccontextmanager
+
+from .network_emulator import NetworkEmulatorDaemon
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +17,7 @@ import uvicorn
 
 from .dash_parser import DashParser
 from .monitor import KubernetesMonitor
-from .real_latency import get_all_latencies
+from .real_latency import get_all_latencies, warmup_nodes
 from .strategies import (
     EpsilonGreedy,
     UCB1Selector,
@@ -31,10 +35,8 @@ from .context import (
     update_client_position,
     get_simple_context,
     update_spam_target,
-    get_dynamic_penalty,
 )
 
-from typing import Any
 
 AVAILABLE_STRATEGIES = [
     "epsilon_greedy",
@@ -47,16 +49,8 @@ AVAILABLE_STRATEGIES = [
     "best",
 ]
 
-selector_instance: Any = None
-selector_initialized = False
-last_steering_main_server_decision = "N/A"
-current_strategy_name = "N/A"
-active_log_filename = None
-
-last_real_latencies = {}
-real_latency_history = {}
-last_real_latency_probe_time = 0.0
-last_decision_contexts_by_ip = {}
+_MAX_CONTEXT_CACHE = 200
+_STALL_PENALTY_FACTOR = 100.0
 
 
 def _create_strategy_instance(strategy_name: str, monitor_ref):
@@ -127,10 +121,14 @@ def _create_strategy_instance(strategy_name: str, monitor_ref):
     return builder()
 
 
-dash_parser = DashParser()
-monitor: Any = None
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    if hasattr(app.state, "network_emulator"):
+        app.state.network_emulator.start()
+    yield
 
-fastapi_app = FastAPI()
+
+fastapi_app = FastAPI(lifespan=app_lifespan)
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -143,50 +141,66 @@ fastapi_app.add_middleware(
 class SteeringServer:
     def __init__(
         self,
+        monitor_ref,
         log_suffix: str = "",
         host_suffix: str = "",
         gateway_mode: bool = False,
         port: int = STEERING_PORT,
     ):
+        self.monitor = monitor_ref
         self.log_suffix = log_suffix
         self.host_suffix = host_suffix
         self.gateway_mode = gateway_mode
         self.port = port
         self.app = fastapi_app
+        self.selector_instance = None
+        self.selector_initialized = False
+        self.last_steering_main_server_decision = "N/A"
+        self.current_strategy_name = "N/A"
+        self.active_log_filename = None
+        self.last_real_latencies = {}
+        self.real_latency_history = {}
+        self.last_real_latency_probe_time = 0.0
+        self.last_decision_contexts = {}
+        self._steering_lock = asyncio.Lock()
+        self.dash_parser = DashParser()
 
         app_logger.info("Server starting. Strategy will be selected from the UI.")
         self._register_routes()
 
     def _initialize_selector_if_needed(self) -> bool:
-        global selector_initialized, selector_instance
-        if selector_instance is None:
+        if self.selector_instance is None:
             return False
-        if not selector_initialized or not selector_instance.nodes:
-            nodes_info = monitor.get_nodes()
+        if not self.selector_initialized or not self.selector_instance.nodes:
+            nodes_info = self.monitor.get_nodes()
             if nodes_info:
                 node_names = [info[0] for info in nodes_info if info and info[0]]
                 if node_names:
-                    selector_instance.initialize(node_names)
-                    selector_initialized = True
+                    self.selector_instance.initialize(node_names)
+                    self.selector_initialized = True
                     app_logger.debug(
                         f"Selector initialized/updated with nodes: {node_names}"
                     )
                     return True
-                app_logger.warning("No node names from monitor to initialize selector.")
+                app_logger.warning(
+                    "No node names from self.monitor to initialize selector."
+                )
             else:
-                app_logger.warning("No node info from monitor to initialize selector.")
+                app_logger.warning(
+                    "No node info from self.monitor to initialize selector."
+                )
             return False
         return True
 
     def _register_routes(self):
         @self.app.get("/health")
         async def health_check():
-            node_count = len(monitor.get_nodes()) if monitor else 0
+            node_count = len(self.monitor.get_nodes()) if self.monitor else 0
             return JSONResponse(
                 {
                     "status": "healthy",
-                    "strategy": current_strategy_name,
-                    "selector_initialized": selector_initialized,
+                    "strategy": self.current_strategy_name,
+                    "self.selector_initialized": self.selector_initialized,
                     "active_nodes": node_count,
                     "available_strategies": AVAILABLE_STRATEGIES,
                 }
@@ -197,28 +211,34 @@ class SteeringServer:
             return JSONResponse(
                 {
                     "strategies": AVAILABLE_STRATEGIES,
-                    "current": current_strategy_name,
+                    "current": self.current_strategy_name,
                 }
             )
 
         @self.app.post("/reset_simulation")
         async def reset_simulation(request: Request):
-            global selector_instance, active_log_filename, selector_initialized
-            global last_real_latencies, real_latency_history, current_strategy_name
             app_logger.info(
-                f"Resetting simulation... Old Selector ID: {id(selector_instance)}"
+                f"Resetting simulation... Old Selector ID: {id(self.selector_instance)}"
             )
-            last_real_latencies = {}
-            real_latency_history = {}
+            self.last_real_latencies = {}
+            self.real_latency_history = {}
+
+            if self.monitor:
+                nodes = [n for n, _ in self.monitor.get_nodes() if n]
+                if nodes:
+                    await asyncio.to_thread(warmup_nodes, nodes)
+
             try:
                 data = await request.json()
             except Exception:
-                data = {}
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=422, detail="Invalid JSON body")
 
             requested_strategy = data.get("strategy")
             if requested_strategy and requested_strategy in AVAILABLE_STRATEGIES:
-                current_strategy_name = requested_strategy
-                app_logger.info(f"Strategy changed to: {current_strategy_name}")
+                self.current_strategy_name = requested_strategy
+                app_logger.info(f"Strategy changed to: {self.current_strategy_name}")
             elif requested_strategy:
                 return JSONResponse(
                     {
@@ -228,7 +248,7 @@ class SteeringServer:
                     status_code=400,
                 )
 
-            if current_strategy_name == "N/A":
+            if self.current_strategy_name == "N/A":
                 return JSONResponse(
                     {
                         "error": "No strategy selected",
@@ -249,27 +269,27 @@ class SteeringServer:
                 safe_filename = os.path.basename(str(requested_filename).strip())
                 if not safe_filename.endswith(".csv"):
                     safe_filename += ".csv"
-                active_log_filename = os.path.join(target_dir, safe_filename)
+                self.active_log_filename = os.path.join(target_dir, safe_filename)
             else:
-                active_log_filename = get_unique_log_filename(
-                    f"log_{current_strategy_name}",
+                self.active_log_filename = get_unique_log_filename(
+                    f"log_{self.current_strategy_name}",
                     self.log_suffix,
                     directory=target_dir,
                 )
-            setup_csv_logging(filename=active_log_filename)
-            selector_instance = _create_strategy_instance(
-                current_strategy_name, monitor
+            setup_csv_logging(filename=self.active_log_filename)
+            self.selector_instance = _create_strategy_instance(
+                self.current_strategy_name, self.monitor
             )
-            selector_initialized = False
+            self.selector_initialized = False
             app_logger.info(
-                f"Simulation reset. Strategy: {current_strategy_name}, "
-                f"Log: {active_log_filename}"
+                f"Simulation reset. Strategy: {self.current_strategy_name}, "
+                f"Log: {self.active_log_filename}"
             )
             return JSONResponse(
                 {
                     "message": "Simulation reset",
-                    "strategy": current_strategy_name,
-                    "new_log": os.path.basename(active_log_filename),
+                    "strategy": self.current_strategy_name,
+                    "new_log": os.path.basename(self.active_log_filename),
                 }
             )
 
@@ -278,7 +298,9 @@ class SteeringServer:
             try:
                 data = await request.json()
             except Exception:
-                return JSONResponse({"error": "Missing JSON body"}, status_code=400)
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=422, detail="Invalid JSON body")
             client_ip = request.client.host if request.client else "unknown"
             s_t, lat, lon, rt_c, srv_u_fb, d_id, stall_t, spam_tgt = (
                 data.get("time"),
@@ -294,16 +316,11 @@ class SteeringServer:
             update_spam_target(spam_tgt)
             log_base = self._build_log_base(s_t, lat, lon)
             if srv_u_fb and rt_c is not None:
-                penalty = get_dynamic_penalty(
-                    self._normalize_server_name(srv_u_fb), monitor
-                )
-                rt_c_with_penalty = rt_c + penalty
-                self._record_real_latency(srv_u_fb, rt_c_with_penalty)
                 return await self._handle_rl_feedback(
                     srv_u_fb,
-                    rt_c_with_penalty,
+                    rt_c,
                     log_base,
-                    client_latency=rt_c_with_penalty,
+                    client_latency=rt_c,
                     client_ip=client_ip,
                     decision_id=d_id,
                     stall_time=stall_t,
@@ -319,19 +336,19 @@ class SteeringServer:
                 probe_if_empty=False
             )
             snapshot = {}
-            if isinstance(selector_instance, PPOHybridSelector):
-                snapshot["ppo_snapshot"] = selector_instance.policy_snapshot(
+            if isinstance(self.selector_instance, PPOHybridSelector):
+                snapshot["ppo_snapshot"] = self.selector_instance.policy_snapshot(
                     explore=False
                 )
-            elif isinstance(selector_instance, SACHybridSelector):
-                snapshot["sac_snapshot"] = selector_instance.policy_snapshot(
+            elif isinstance(self.selector_instance, SACHybridSelector):
+                snapshot["sac_snapshot"] = self.selector_instance.policy_snapshot(
                     explore=False
                 )
             return JSONResponse(
                 {
                     "latencies": oracle_latencies,
-                    "decision": last_steering_main_server_decision,
-                    "strategy": current_strategy_name,
+                    "decision": self.last_steering_main_server_decision,
+                    "strategy": self.current_strategy_name,
                     **snapshot,
                 }
             )
@@ -339,14 +356,13 @@ class SteeringServer:
         @self.app.get("/{name:path}")
         @self.app.post("/{name:path}")
         async def do_remote_steering(name: str, request: Request):
-            global last_steering_main_server_decision, last_decision_contexts_by_ip
-            client_ip = request.client.host if request.client else "unknown"
             ordered_nodes = []
             decision_id = "N/A"
 
             if self._initialize_selector_if_needed():
+                assert self.selector_instance is not None
                 if isinstance(
-                    selector_instance,
+                    self.selector_instance,
                     (
                         LinUCBSelector,
                         ThompsonSamplingSelector,
@@ -355,39 +371,45 @@ class SteeringServer:
                         BestSelector,
                     ),
                 ):
-                    node_names = [
-                        info[0] for info in monitor.get_nodes() if info and info[0]
-                    ]
-                    contexts_for_decision, latencies_for_decision = {}, {}
-                    for node_name in node_names:
-                        latency = await self._get_real_latency_for_node(node_name)
-                        history = real_latency_history.get(
-                            self._normalize_server_name(node_name), [latency]
+                    async with self._steering_lock:
+                        node_names = [
+                            info[0]
+                            for info in self.monitor.get_nodes()
+                            if info and info[0]
+                        ]
+                        contexts_for_decision, latencies_for_decision = {}, {}
+                        for node_name in node_names:
+                            latency = await self._get_real_latency_for_node(node_name)
+                            history = self.real_latency_history.get(
+                                self._normalize_server_name(node_name), [latency]
+                            )
+                            context = get_simple_context(
+                                self._normalize_server_name(node_name),
+                                latency,
+                                history,
+                                self.monitor,
+                                self.selector_instance,
+                                self.last_real_latencies,
+                            )
+                            contexts_for_decision[node_name] = context
+                            latencies_for_decision[node_name] = latency
+                        decision_id = str(uuid.uuid4())
+                        ordered_nodes = self.selector_instance.select_arm(
+                            contexts=contexts_for_decision,
+                            latencies=latencies_for_decision,
+                            decision_id=decision_id,
                         )
-                        context = get_simple_context(
-                            self._normalize_server_name(node_name),
-                            latency,
-                            history,
-                            monitor,
-                            selector_instance,
-                            last_real_latencies,
-                        )
-                        contexts_for_decision[node_name] = context
-                        latencies_for_decision[node_name] = latency
-                    last_decision_contexts_by_ip[client_ip] = contexts_for_decision
-                    decision_id = str(uuid.uuid4())
-                    ordered_nodes = selector_instance.select_arm(
-                        contexts=contexts_for_decision,
-                        latencies=latencies_for_decision,
-                        decision_id=decision_id,
-                    )
+                        if len(self.last_decision_contexts) >= _MAX_CONTEXT_CACHE:
+                            oldest_key = next(iter(self.last_decision_contexts))
+                            del self.last_decision_contexts[oldest_key]
+                        self.last_decision_contexts[decision_id] = contexts_for_decision
                 else:
                     decision_id = str(uuid.uuid4())
-                    ordered_nodes = selector_instance.select_arm(
+                    ordered_nodes = self.selector_instance.select_arm(
                         decision_id=decision_id
                     )
 
-            last_steering_main_server_decision = (
+            self.last_steering_main_server_decision = (
                 ordered_nodes[0] if ordered_nodes else "N/A_NO_NODES_FROM_SELECTION"
             )
 
@@ -398,9 +420,14 @@ class SteeringServer:
             if forwarded_prefix and not forwarded_prefix.startswith("/"):
                 forwarded_prefix = f"/{forwarded_prefix}"
             uri = f"{uri_scheme}://{service_host}{forwarded_prefix}"
-            target = request.query_params.get("_DASH_pathway", "")
+            target = (
+                request.query_params.get("_DASH_pathway", "")
+                .strip()
+                .strip('"')
+                .strip("'")
+            )
 
-            resp = dash_parser.build(
+            resp = self.dash_parser.build(
                 target=target,
                 nodes=nodes_p,
                 uri=uri,
@@ -411,7 +438,7 @@ class SteeringServer:
             )
             resp["MEASURED-LATENCIES-MS"] = await self._get_real_latency_snapshot()
             resp["DECISION-ID"] = decision_id
-            last_act = getattr(selector_instance, "last_action", None)
+            last_act = getattr(self.selector_instance, "last_action", None)
             if last_act is not None and isinstance(last_act, dict):
                 if "quality_level" in last_act:
                     resp["RL-QUALITY-LEVEL"] = last_act["quality_level"]
@@ -450,6 +477,27 @@ class SteeringServer:
             return f"delivery-node-{name[4:]}"
         return name
 
+    def _resolve_arm_name_for_selector(self, raw_name: str) -> str:
+        """Return the arm name exactly as it is stored in the selector's self.nodes.
+
+        The client may report a server as 'node1' while the monitor registers it as
+        'delivery-node-1' (or vice-versa).  This method resolves the ambiguity by
+        checking the selector's own node list, trying both forms.  If the selector is
+        not yet initialised, it falls back to the raw name so callers can still log.
+        """
+        if not raw_name:
+            return raw_name
+        selector = self.selector_instance
+        if selector is None or not getattr(selector, "nodes", None):
+            return raw_name
+        nodes = selector.nodes
+        if raw_name in nodes:
+            return raw_name
+        normalized = self._normalize_server_name(raw_name)
+        if normalized in nodes:
+            return normalized
+        return raw_name
+
     @staticmethod
     def _coerce_latency_ms(latency_value):
         try:
@@ -461,7 +509,6 @@ class SteeringServer:
         return latency
 
     def _record_real_latency(self, server_name, latency_value):
-        global last_real_latencies, real_latency_history
         normalized_name = self._normalize_server_name(server_name)
         latency = self._coerce_latency_ms(latency_value)
         if not normalized_name or normalized_name == "cloud" or latency is None:
@@ -469,59 +516,59 @@ class SteeringServer:
 
         latency = min(latency, 1000.0)
 
-        prev_latency = last_real_latencies.get(normalized_name)
+        prev_latency = self.last_real_latencies.get(normalized_name)
         if prev_latency is not None:
-            smoothed = 0.25 * latency + 0.75 * prev_latency
+            smoothed = 0.15 * latency + 0.85 * prev_latency
         else:
             smoothed = latency
 
-        last_real_latencies[normalized_name] = smoothed
-        history = real_latency_history.setdefault(normalized_name, [])
+        self.last_real_latencies[normalized_name] = smoothed
+        history = self.real_latency_history.setdefault(normalized_name, [])
         history.append(smoothed)
         if len(history) > 30:
             del history[:-30]
+        if server_name != normalized_name:
+            self.last_real_latencies[server_name] = smoothed
+            raw_history = self.real_latency_history.setdefault(server_name, [])
+            raw_history.append(smoothed)
+            if len(raw_history) > 30:
+                del raw_history[:-30]
 
     async def _probe_real_latencies(self):
-        global last_real_latencies, last_real_latency_probe_time
         now = time.time()
-        if now - last_real_latency_probe_time < 2.0 and last_real_latencies:
-            return dict(last_real_latencies)
-        node_names = [info[0] for info in monitor.get_nodes() if info and info[0]]
+        if now - self.last_real_latency_probe_time < 2.0 and self.last_real_latencies:
+            return dict(self.last_real_latencies)
+        node_names = [info[0] for info in self.monitor.get_nodes() if info and info[0]]
         if not node_names:
             node_names = None
         probed = await asyncio.to_thread(
             get_all_latencies, nodes=node_names, timeout_seconds=0.75
         )
-        last_real_latency_probe_time = now
+        self.last_real_latency_probe_time = now
         for node_name, latency in probed.items():
             if latency != 9999.0:
-                penalty = get_dynamic_penalty(
-                    self._normalize_server_name(node_name), monitor
-                )
-                latency_with_penalty = latency + penalty
-                self._record_real_latency(node_name, latency_with_penalty)
-                probed[node_name] = latency_with_penalty
-        return dict(last_real_latencies) or probed
+                self._record_real_latency(node_name, latency)
+        return dict(self.last_real_latencies) or probed
 
     async def _get_real_latency_snapshot(self, probe_if_empty=True):
-        if last_real_latencies:
-            return dict(last_real_latencies)
-        if probe_if_empty:
+        if probe_if_empty or self.last_real_latencies:
             return await self._probe_real_latencies()
         return {}
 
     async def _get_real_latency_for_node(self, node_name):
+        latency = self.last_real_latencies.get(node_name)
+        if latency is not None:
+            return latency
         normalized_name = self._normalize_server_name(node_name)
-        latency = last_real_latencies.get(normalized_name)
+        latency = self.last_real_latencies.get(normalized_name)
         if latency is not None:
             return latency
         probed = await self._probe_real_latencies()
-        return probed.get(normalized_name, 50.0)
+        return probed.get(normalized_name, probed.get(node_name, 50.0))
 
-    @staticmethod
-    def _build_log_base(s_t, lat, lon):
-        counts = getattr(selector_instance, "counts", {})
-        actual = getattr(selector_instance, "real_counts", counts)
+    def _build_log_base(self, s_t, lat, lon):
+        counts = getattr(self.selector_instance, "counts", {})
+        actual = getattr(self.selector_instance, "real_counts", counts)
         return {
             "timestamp_server": time.time(),
             "sim_time_client": s_t,
@@ -529,12 +576,11 @@ class SteeringServer:
             "client_lon": lon,
             "dynamic_best_server_latency": None,
             "all_servers_oracle_latency_json": "{}",
-            "steering_decision_main_server": last_steering_main_server_decision,
-            "rl_strategy": current_strategy_name,
+            "steering_decision_main_server": self.last_steering_main_server_decision,
+            "rl_strategy": self.current_strategy_name,
             "rl_counts_json": json.dumps(counts),
             "rl_actual_counts_json": json.dumps(actual),
-            "rl_values_json": json.dumps(getattr(selector_instance, "values", {})),
-            "gamma_value": None,
+            "rl_values_json": json.dumps(getattr(self.selector_instance, "values", {})),
         }
 
     async def _handle_rl_feedback(
@@ -547,7 +593,9 @@ class SteeringServer:
         decision_id=None,
         stall_time=0,
     ):
-        selector_srv_name = self._normalize_server_name(srv_name)
+        selector_arm_name = self._resolve_arm_name_for_selector(srv_name)
+        normalized_latency_name = self._normalize_server_name(srv_name)
+
         log_entry = {
             **log_base,
             "server_used_for_latency": srv_name,
@@ -561,22 +609,23 @@ class SteeringServer:
             log_entry["all_servers_oracle_latency_json"] = json.dumps(oracle_latencies)
             best_server = min(oracle_latencies, key=lambda k: oracle_latencies[k])
             log_entry["experienced_latency_ms_ORACLE"] = oracle_latencies.get(
-                self._normalize_server_name(srv_name)
-            )
+                normalized_latency_name
+            ) or oracle_latencies.get(srv_name)
             log_entry["dynamic_best_server_latency"] = oracle_latencies[best_server]
-        if active_log_filename:
-            log_data_to_csv(log_entry, filename=active_log_filename)
+        if self.active_log_filename:
+            log_data_to_csv(log_entry, filename=self.active_log_filename)
 
         if not self._initialize_selector_if_needed():
             return JSONResponse({"error": "Service not ready"}, status_code=503)
-        if not hasattr(selector_instance, "update"):
+        assert self.selector_instance is not None
+        if not hasattr(self.selector_instance, "update"):
             return JSONResponse({"message": "Data logged"}, status_code=200)
 
         feedback_value = float(feedback_latency)
-        effective_latency = feedback_value + float(stall_time) * 10.0
+        effective_latency = feedback_value + float(stall_time) * _STALL_PENALTY_FACTOR
 
         if isinstance(
-            selector_instance,
+            self.selector_instance,
             (
                 UCB1Selector,
                 LinUCBSelector,
@@ -587,41 +636,57 @@ class SteeringServer:
             ),
         ):
             feedback_value = (
-                1000.0 / effective_latency if effective_latency > 0 else 0.0
+                10000.0 / effective_latency if effective_latency > 0 else 0.0
             )
 
-        update_kwargs = {}
-        if decision_id:
-            update_kwargs["decision_id"] = decision_id
-        if isinstance(selector_instance, (LinUCBSelector, ThompsonSamplingSelector)):
-            ctx = None
-            if client_ip in last_decision_contexts_by_ip:
-                ctx = last_decision_contexts_by_ip[client_ip].get(srv_name)
-                if ctx is None:
-                    ctx = last_decision_contexts_by_ip[client_ip].get(selector_srv_name)
-            if ctx is not None:
-                update_kwargs["context"] = ctx
-            else:
-                latency = await self._get_real_latency_for_node(selector_srv_name)
-                history = real_latency_history.get(selector_srv_name, [latency])
-                update_kwargs["context"] = get_simple_context(
-                    selector_srv_name,
-                    latency,
-                    history,
-                    monitor,
-                    selector_instance,
-                    last_real_latencies,
-                )
+        async with self._steering_lock:
+            update_kwargs = {}
+            if decision_id:
+                update_kwargs["decision_id"] = decision_id
+            if isinstance(
+                self.selector_instance, (LinUCBSelector, ThompsonSamplingSelector)
+            ):
+                ctx = None
+                if decision_id and decision_id in self.last_decision_contexts:
+                    stored = self.last_decision_contexts.pop(decision_id, {})
+                    ctx = (
+                        stored.get(selector_arm_name)
+                        or stored.get(srv_name)
+                        or stored.get(normalized_latency_name)
+                    )
+                if ctx is not None:
+                    update_kwargs["context"] = ctx
+                else:
+                    app_logger.warning(
+                        f"[Server] Context not found for decision_id={decision_id}, "
+                        "recomputing from current state."
+                    )
+                    latency = await self._get_real_latency_for_node(selector_arm_name)
+                    history = (
+                        self.real_latency_history.get(selector_arm_name)
+                        or self.real_latency_history.get(normalized_latency_name)
+                        or [latency]
+                    )
+                    update_kwargs["context"] = get_simple_context(
+                        selector_arm_name,
+                        latency,
+                        history,
+                        self.monitor,
+                        self.selector_instance,
+                        self.last_real_latencies,
+                    )
 
-        if isinstance(selector_instance, (PPOHybridSelector, SACHybridSelector)):
-            update_kwargs["done"] = False
-        await asyncio.to_thread(
-            selector_instance.update, selector_srv_name, feedback_value, **update_kwargs
-        )
+            if isinstance(
+                self.selector_instance, (PPOHybridSelector, SACHybridSelector)
+            ):
+                update_kwargs["done"] = False
+            self.selector_instance.update(
+                selector_arm_name, feedback_value, **update_kwargs
+            )
         return JSONResponse({"message": "RL updated and logged"}, status_code=200)
 
     async def _handle_location_only(self, srv_name, rt_c, log_base):
-        if active_log_filename:
+        if self.active_log_filename:
             log_entry = {
                 **log_base,
                 "server_used_for_latency": srv_name,
@@ -639,7 +704,7 @@ class SteeringServer:
                     self._normalize_server_name(srv_name)
                 )
                 log_entry["dynamic_best_server_latency"] = oracle_latencies[best_server]
-            log_data_to_csv(log_entry, filename=active_log_filename)
+            log_data_to_csv(log_entry, filename=self.active_log_filename)
         return JSONResponse({"message": "Location data logged"}, status_code=200)
 
 
@@ -667,7 +732,11 @@ if __name__ == "__main__":
     )
     monitor.start_collecting()
 
+    network_emulator = NetworkEmulatorDaemon(monitor=monitor)
+    fastapi_app.state.network_emulator = network_emulator
+
     main_app = SteeringServer(
+        monitor_ref=monitor,
         log_suffix=args.log_suffix,
         host_suffix=args.host_suffix,
         gateway_mode=args.gateway_mode,

@@ -8,16 +8,26 @@ import requests
 DEFAULT_NODE_NAMES = ("delivery-node-1", "delivery-node-2", "delivery-node-3")
 DEFAULT_PROBE_PATH = "/Eldorado/4sec/avc/manifest.mpd"
 
-_dns_cache = {}
+_DNS_CACHE_TTL_SECONDS = 60.0
+_dns_cache: dict[str, tuple[str, float]] = {}
 
 
 def _resolve_host(host: str) -> str:
-    if host not in _dns_cache:
-        try:
-            _dns_cache[host] = socket.gethostbyname(host)
-        except Exception:
-            return host
-    return _dns_cache[host]
+    now = time.time()
+    cached = _dns_cache.get(host)
+    if cached is not None:
+        ip, ts = cached
+        if now - ts < _DNS_CACHE_TTL_SECONDS:
+            return ip
+    try:
+        ip = socket.gethostbyname(host)
+        _dns_cache[host] = (ip, now)
+        return ip
+    except Exception:
+        return host
+
+
+_session = requests.Session()
 
 
 def _service_url_and_headers(node_name: str, probe_path: str) -> tuple[str, dict]:
@@ -33,22 +43,54 @@ def _service_url_and_headers(node_name: str, probe_path: str) -> tuple[str, dict
     return url, headers
 
 
+def warmup_nodes(nodes: list[str], probe_path: str = DEFAULT_PROBE_PATH):
+    """Send two requests per node so the keep-alive connection is established
+    before the first timed probe.  The second request is the one that will
+    benefit from connection reuse."""
+    for node_name in nodes:
+        url, headers = _service_url_and_headers(node_name, probe_path)
+        for _ in range(2):
+            try:
+                r = _session.get(url, headers=headers, timeout=1.5, stream=True)
+                r.close()
+            except Exception:
+                pass
+
+
 def measure_latency_ms(
     node_name: str,
     probe_path: str = DEFAULT_PROBE_PATH,
     timeout_seconds: float = 1.0,
+    n_samples: int = 3,
 ) -> float:
-    start = time.perf_counter()
+    """Measure TTFB latency using the median of *n_samples* consecutive requests.
+
+    The first request is a connection warm-up (re-establishes TCP keep-alive if
+    the idle connection was dropped by the server).  The remaining samples are
+    timed; the median is returned so that single-outlier spikes (e.g. from a
+    TCP reconnect or Linux scheduler jitter) are rejected.
+    """
     url, headers = _service_url_and_headers(node_name, probe_path)
-    response = requests.get(
-        url,
-        headers=headers,
-        timeout=timeout_seconds,
-        stream=True,
-    )
-    response.raise_for_status()
-    response.close()
-    return (time.perf_counter() - start) * 1000.0
+    samples: list[float] = []
+    for i in range(n_samples):
+        t0 = time.perf_counter()
+        response = _session.get(
+            url,
+            headers=headers,
+            timeout=timeout_seconds,
+            stream=True,
+        )
+        response.raise_for_status()
+        response.close()
+        elapsed = (time.perf_counter() - t0) * 1000.0
+        if i == 0 and n_samples > 1:
+            # First sample is the warm-up: skip it only if we have more samples
+            continue
+        samples.append(elapsed)
+    samples.sort()
+    # Return median of collected samples
+    mid = len(samples) // 2
+    return samples[mid] if samples else 9999.0
 
 
 def get_all_latencies(

@@ -1,6 +1,9 @@
 import os
 import csv
+import threading
 from .config import LOG_DIR, app_logger
+
+_csv_write_lock = threading.Lock()
 
 CSV_HEADERS = [
     "timestamp_server",
@@ -18,7 +21,7 @@ CSV_HEADERS = [
     "rl_counts_json",
     "rl_actual_counts_json",
     "rl_values_json",
-    "gamma_value",
+    "stall_time_ms",
 ]
 
 
@@ -39,9 +42,10 @@ def setup_csv_logging(filename: str):
 def log_data_to_csv(data_dict: dict, filename: str):
     row = [data_dict.get(h) for h in CSV_HEADERS]
     try:
-        with open(filename, mode="a", newline="", buffering=1) as file:
-            csv.writer(file).writerow(row)
-            file.flush()
+        with _csv_write_lock:
+            with open(filename, mode="a", newline="", buffering=1) as file:
+                csv.writer(file).writerow(row)
+                file.flush()
     except Exception as e:
         app_logger.error(f"Error writing to CSV {filename}: {e}", exc_info=True)
 
