@@ -9,8 +9,8 @@ metadata:
   name: pod-reader
 rules:
 - apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list", "watch", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -174,17 +174,17 @@ spec:
         app: delivery-node
         cache-id: "1"
     spec:
-      initContainers:
-      - name: network-latency-injector
-        image: alpine:latest
-        command: ["sh", "-c", "apk add --no-cache iproute2 && tc qdisc add dev eth0 root netem delay 10ms 2ms distribution normal"]
-        securityContext:
-          capabilities:
-            add: ["NET_ADMIN"]
       containers:
       - name: caddy
         image: content-steering/delivery-node:latest
         imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "tc qdisc add dev eth0 root netem delay 5ms 1ms distribution normal || true"]
         env:
         - name: LATITUDE
           value: "-23.0"
@@ -253,17 +253,17 @@ spec:
         app: delivery-node
         cache-id: "2"
     spec:
-      initContainers:
-      - name: network-latency-injector
-        image: alpine:latest
-        command: ["sh", "-c", "apk add --no-cache iproute2 && tc qdisc add dev eth0 root netem delay 50ms 5ms distribution normal"]
-        securityContext:
-          capabilities:
-            add: ["NET_ADMIN"]
       containers:
       - name: caddy
         image: content-steering/delivery-node:latest
         imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "tc qdisc add dev eth0 root netem delay 5ms 1ms distribution normal || true"]
         env:
         - name: LATITUDE
           value: "-33.0"
@@ -332,17 +332,17 @@ spec:
         app: delivery-node
         cache-id: "3"
     spec:
-      initContainers:
-      - name: network-latency-injector
-        image: alpine:latest
-        command: ["sh", "-c", "apk add --no-cache iproute2 && tc qdisc add dev eth0 root netem delay 90ms 10ms distribution normal"]
-        securityContext:
-          capabilities:
-            add: ["NET_ADMIN"]
       containers:
       - name: caddy
         image: content-steering/delivery-node:latest
         imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "tc qdisc add dev eth0 root netem delay 5ms 1ms distribution normal || true"]
         env:
         - name: LATITUDE
           value: "5.0"
