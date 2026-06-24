@@ -25,6 +25,7 @@ let isStalled = false;
 let lastStallStart = 0;
 let totalStallTime = 0;
 let selectedStrategy = "";
+let fragmentTimeouts = {};
 
 const STRATEGY_LABELS = {
   epsilon_greedy: "Epsilon-Greedy",
@@ -161,11 +162,22 @@ function loadStrategiesFromBackend() {
       defaultOpt.selected = true;
       defaultOpt.textContent = "— Select a strategy —";
       select.appendChild(defaultOpt);
-      (data.strategies || []).forEach((s) => {
+      (data.strategies || []).forEach((s, idx) => {
         const opt = document.createElement("option");
         opt.value = s;
         opt.textContent = STRATEGY_LABELS[s] || s;
         select.appendChild(opt);
+        if (idx === 0) {
+          opt.selected = true;
+          selectedStrategy = s;
+          const badge = document.getElementById("strategyStatusBadge");
+          if (badge) {
+            badge.textContent = STRATEGY_LABELS[s] || s;
+            badge.classList.remove("bg-secondary");
+            badge.classList.add("bg-primary");
+          }
+          document.getElementById("button_StartControlledSim").disabled = !manifestSuccessfullyLoaded;
+        }
       });
       console.log("Strategies loaded from backend:", data.strategies);
     })
@@ -179,11 +191,24 @@ function loadStrategiesFromBackend() {
       defaultOpt.selected = true;
       defaultOpt.textContent = "— Select a strategy —";
       select.appendChild(defaultOpt);
+      let idx = 0;
       for (const key in STRATEGY_LABELS) {
         const opt = document.createElement("option");
         opt.value = key;
         opt.textContent = STRATEGY_LABELS[key];
         select.appendChild(opt);
+        if (idx === 0) {
+          opt.selected = true;
+          selectedStrategy = key;
+          const badge = document.getElementById("strategyStatusBadge");
+          if (badge) {
+            badge.textContent = STRATEGY_LABELS[key];
+            badge.classList.remove("bg-secondary");
+            badge.classList.add("bg-primary");
+          }
+          document.getElementById("button_StartControlledSim").disabled = !manifestSuccessfullyLoaded;
+        }
+        idx++;
       }
     });
 }
@@ -283,8 +308,16 @@ function stopCurrentSimulation(
   setTimeout(() => {
     isSimulationRunning = false;
     if (pausePlayerAndSeek && player && manifestSuccessfullyLoaded) {
-      if (player.isReady() && !player.isPaused()) player.pause();
-      if (player.isReady()) player.seek(0);
+      if (player.isReady() && typeof player.seek === 'function') {
+        player.seek(0);
+      }
+      if (player.isReady() && typeof player.pause === 'function') {
+        player.pause();
+      }
+      const vid = document.querySelector('video');
+      if (vid && !vid.paused) {
+        vid.pause();
+      }
     }
     if (currentRunIndex > 0 && currentRunIndex >= totalRunsToExecute) {
       console.log("All runs completed.");
@@ -324,6 +357,8 @@ function _resetUIOnly() {
   currentSegmentServiceLocation = { audio: null, video: null };
   _updateActiveServerIcons();
   fragmentLoadStarts = {};
+  for (let k in fragmentTimeouts) clearTimeout(fragmentTimeouts[k]);
+  fragmentTimeouts = {};
   currentDecisionId = null;
   isStalled = false;
   totalStallTime = 0;
@@ -367,12 +402,20 @@ function _runSimulation() {
   document.getElementById("simCurrentTimeDisplay").textContent = "0";
   isSimulationRunning = true;
   fragmentLoadStarts = {};
+  for (let k in fragmentTimeouts) clearTimeout(fragmentTimeouts[k]);
+  fragmentTimeouts = {};
   _initCharts();
   _ensurePlayerReady();
   document.getElementById("button_StartControlledSim").disabled = false;
   document.getElementById("button_StopSim").disabled = false;
   const simConfig = _readSimulationConfig();
-  player.play();
+  if (player && typeof player.play === 'function') {
+    try {
+      player.play();
+    } catch (e) {
+      console.warn("Synchronous player.play() failed, waiting for stream init:", e);
+    }
+  }
   console.log("Simulation started. Duration:", simConfig.duration);
   simTimer = setInterval(() => _onSimulationTick(simConfig), 1000);
 }
@@ -506,7 +549,7 @@ function _ensurePlayerReady() {
   }
   if (player.getActiveStream() && player.isReady()) {
     attemptSeek();
-  } else if (player.isReady()) {
+  } else {
     if (onStreamInitForPlay && player)
       player.off(
         dashjs.MediaPlayer.events.STREAM_INITIALIZED,
@@ -515,6 +558,14 @@ function _ensurePlayerReady() {
     onStreamInitForPlay = function () {
       if (!isSimulationRunning) return;
       attemptSeek();
+      if (player && typeof player.play === 'function') {
+        try { player.play(); } catch(e) {}
+      }
+      const vid = document.querySelector('video');
+      if (vid && vid.paused) {
+        let p = vid.play();
+        if (p !== undefined) p.catch(() => {});
+      }
       if (player)
         player.off(
           dashjs.MediaPlayer.events.STREAM_INITIALIZED,
@@ -527,8 +578,6 @@ function _ensurePlayerReady() {
       null,
       { once: true },
     );
-  } else {
-    isSimulationRunning = false;
   }
 }
 function _readSimulationConfig() {
@@ -731,42 +780,9 @@ function startSimulatedCacheSpam(targetCacheName, phaseId) {
     }
     return;
   }
-  const nodeMap = {
-    "delivery-node-1": "node1",
-    "delivery-node-2": "node2",
-    "delivery-node-3": "node3",
-  };
-  const nodePath = nodeMap[targetCacheName] || "node1";
-  const hostUrl = `${window.location.origin}/${nodePath}/Eldorado/4sec/avc/750000/seg-1.m4s?spam_ts=${Date.now()}&phase=${phaseId}`;
-
-  const currentPhaseActiveFlag =
-    phaseId === 1 ? () => simSpamActive_1 : () => simSpamActive_2;
-  const setSpamIntervalId = (val) => {
-    if (phaseId === 1) simIntervalID_spam_1 = val;
-    else simIntervalID_spam_2 = val;
-  };
-  const currentSpamIntervalId =
-    phaseId === 1 ? simIntervalID_spam_1 : simIntervalID_spam_2;
-  const myIntervalClearer = () => {
-    if (phaseId === 1) {
-      stopInterval(simIntervalID_spam_1);
-      simIntervalID_spam_1 = null;
-    } else {
-      stopInterval(simIntervalID_spam_2);
-      simIntervalID_spam_2 = null;
-    }
-  };
-
-  function sendSpamRequest() {
-    if (isSimulationRunning && currentPhaseActiveFlag()) {
-      fetch(hostUrl).catch(() => {});
-    } else {
-      myIntervalClearer();
-    }
-  }
-
-  if (currentSpamIntervalId) clearInterval(currentSpamIntervalId);
-  setSpamIntervalId(setInterval(sendSpamRequest, 100));
+  console.log(
+    `[SPAM ${phaseId}] Activated tc/netem congestion on: ${targetCacheName}`,
+  );
 }
 
 function reportLocationToSteering(lat, lon, spamTarget) {
@@ -792,8 +808,10 @@ function reportLatencyToSteering(
   stallTime,
   qualityLevel,
 ) {
-  if (!isSimulationRunning || lat === undefined || lon === undefined) return;
-  if (clientMeasuredLatency === undefined || serverUsed === undefined) return;
+  if (!isSimulationRunning || lat === undefined || lon === undefined)
+    return Promise.resolve();
+  if (clientMeasuredLatency === undefined || serverUsed === undefined)
+    return Promise.resolve();
   const payload = {
     time: simElapsedTime,
     lat: lat,
@@ -804,19 +822,17 @@ function reportLatencyToSteering(
     stall_time: stallTime,
     quality_level: qualityLevel,
   };
-  fetch(`${STEERING_SERVER_URL}/coords`, {
+  return fetch(`${STEERING_SERVER_URL}/coords`, {
     method: "POST",
     body: JSON.stringify(payload),
     headers: { "Content-type": "application/json; charset=UTF-8" },
-  })
-    .then((response) =>
-      response
-        .text()
-        .then((text) => ({ ok: response.ok, status: response.status, text })),
-    )
-    .then((data) => {})
-    .catch((error) => {});
+  }).then((response) =>
+    response
+      .text()
+      .then((text) => ({ ok: response.ok, status: response.status, text })),
+  );
 }
+
 function _load() {
   let newMpdUrl = document.getElementById("manifest").value;
   if (!newMpdUrl) {
@@ -950,23 +966,60 @@ function _onFragmentLoadingStarted(e) {
         };
         currentSegmentServiceLocation[e.mediaType] = e.request.serviceLocation;
         _updateActiveServerIcons();
+
+        if (fragmentTimeouts[key]) clearTimeout(fragmentTimeouts[key]);
+        if (e.mediaType === "video") {
+          fragmentTimeouts[key] = setTimeout(() => {
+            console.error(
+              "Fragment loading timeout! Emitting extreme penalty for " +
+                e.request.serviceLocation,
+            );
+            if (
+              isSimulationRunning &&
+              simCurrentLat !== undefined &&
+              simCurrentLon !== undefined
+            ) {
+              let clientMeasuredLatencyMs = 15000;
+              let stallToReport = totalStallTime + 15000;
+              reportLatencyToSteering(
+                simCurrentLat,
+                simCurrentLon,
+                clientMeasuredLatencyMs,
+                e.request.serviceLocation,
+                currentDecisionId,
+                stallToReport,
+                player.getQualityFor("video"),
+              )
+                .then(() => {
+                  totalStallTime = 0;
+                })
+                .catch(() => {});
+            }
+            delete fragmentLoadStarts[key];
+            delete fragmentTimeouts[key];
+          }, 15000);
+        }
       }
     }
   } catch (err) {}
 }
 function _onFragmentLoadingCompleted(e) {
   try {
-    const key = e.mediaType + "_" + e.request.index;
+    const mediaType = e.mediaType || (e.request && e.request.mediaType);
+    const key = mediaType + "_" + e.request.index;
     if (e && e.request && fragmentLoadStarts[key]) {
+      if (fragmentTimeouts[key]) {
+        clearTimeout(fragmentTimeouts[key]);
+        delete fragmentTimeouts[key];
+      }
       const loadInfo = fragmentLoadStarts[key];
       const endTime = performance.now();
       let clientMeasuredLatencyMs = Math.round(endTime - loadInfo.startTime);
       const serverUsed = loadInfo.serviceLocation;
       delete fragmentLoadStarts[key];
-      if (isSimulationRunning) {
+      if (isSimulationRunning && mediaType === "video") {
         if (simCurrentLat !== undefined && simCurrentLon !== undefined) {
           const stallToReport = totalStallTime;
-          totalStallTime = 0;
           reportLatencyToSteering(
             simCurrentLat,
             simCurrentLon,
@@ -975,7 +1028,11 @@ function _onFragmentLoadingCompleted(e) {
             currentDecisionId,
             stallToReport,
             player.getQualityFor("video"),
-          );
+          )
+            .then(() => {
+              totalStallTime = Math.max(0, totalStallTime - stallToReport);
+            })
+            .catch(() => {});
         }
       }
     }
@@ -996,6 +1053,10 @@ function _onContentSteeringRequestCompleted(e) {
       }
       if (data["RL-QUALITY-LEVEL"] !== undefined) {
         player.setQualityFor("video", data["RL-QUALITY-LEVEL"]);
+      } else {
+        player.updateSettings({
+          streaming: { abr: { autoSwitchBitrate: { video: true } } },
+        });
       }
       const priority = data["PATHWAY-PRIORITY"] || data.pathwayPriority || [];
       document.getElementById(`steering-decision-display`).textContent =
