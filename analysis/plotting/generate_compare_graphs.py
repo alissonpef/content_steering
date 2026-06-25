@@ -107,7 +107,7 @@ def plot_average_latency_comparison(
                 linewidth=style["linewidth"],
                 linestyle=style["linestyle"],
                 alpha=style["alpha"],
-                zorder=(50 if strat_key == "oracle_best_choice" else style["zorder"]),
+                zorder=(50 if strat_key == "best" else style["zorder"]),
                 label=style["label"],
             )
             plotted.add(strat_key)
@@ -203,7 +203,7 @@ def plot_cumulative_regret(
                 and len(pd.Series(df["rl_strategy"]).dropna()) > 0
             ):
                 strat = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
-            if strat not in KNOWN_STRATEGY_KEYS or strat == "oracle_best_choice":
+            if strat not in KNOWN_STRATEGY_KEYS or strat == "best":
                 continue
             scenario_key = _extract_scenario_from_filename(fn)
             entries_by_scenario.setdefault(scenario_key, []).append((strat, fn, df))
@@ -305,7 +305,7 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
                 and len(pd.Series(df["rl_strategy"]).dropna()) > 0
             ):
                 strat = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
-            if strat not in KNOWN_STRATEGY_KEYS or strat == "oracle_best_choice":
+            if strat not in KNOWN_STRATEGY_KEYS or strat == "best":
                 continue
             scenario_key = _extract_scenario_from_filename(fn)
             entries_by_scenario.setdefault(scenario_key, []).append(

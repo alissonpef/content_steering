@@ -71,6 +71,15 @@ STRATEGY_STYLE = {
         "marker": None,
         "alpha": 0.75,
     },
+    "round_robin": {
+        "label": "Round Robin",
+        "color": "#8b4513",
+        "linewidth": 1.4,
+        "linestyle": "-.",
+        "zorder": 4,
+        "marker": None,
+        "alpha": 0.8,
+    },
     "ppo_hybrid": {
         "label": "PPO Hybrid",
         "color": CB_CYAN,
@@ -89,14 +98,23 @@ STRATEGY_STYLE = {
         "marker": None,
         "alpha": 0.90,
     },
-    "oracle_best_choice": {
-        "label": "Oracle Optimal",
+    "best": {
+        "label": "Perfect (Oracle)",
         "color": CB_ORANGE,
-        "linewidth": 1.6,
-        "linestyle": (0, (2, 2)),
-        "zorder": 30,
+        "linewidth": 2.0,
+        "linestyle": "--",
+        "zorder": 35,
         "marker": None,
-        "alpha": 1.0,
+        "alpha": 0.95,
+    },
+    "thompson_sampling": {
+        "label": "Thompson Sampling",
+        "color": "#e377c2",
+        "linewidth": 1.6,
+        "linestyle": "-",
+        "zorder": 6,
+        "marker": None,
+        "alpha": 0.85,
     },
     "no_steering": {
         "label": "No Steering",
@@ -118,12 +136,14 @@ STRATEGY_STYLE = {
     },
 }
 STRATEGY_LEGEND_ORDER = [
-    "oracle_best_choice",
+    "best",
     "ppo_hybrid",
     "sac_hybrid",
     "linucb",
     "ucb1",
     "epsilon_greedy",
+    "thompson_sampling",
+    "round_robin",
     "random",
     "no_steering",
 ]
@@ -134,13 +154,15 @@ KNOWN_SERVER_KEYS_UNDERSCORE = [
 ]
 
 KNOWN_STRATEGY_KEYS = [
-    "oracle_best_choice",
+    "best",
     "ppo_hybrid",
     "sac_hybrid",
     "epsilon_greedy",
     "no_steering",
     "linucb",
     "ucb1",
+    "thompson_sampling",
+    "round_robin",
     "random",
 ]
 
@@ -314,7 +336,7 @@ def parse_json_column(series, prefix: str = ""):
             if isinstance(d, dict):
                 rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
                 indices.append(idx)
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             pass
     if not rows:
         return pd.DataFrame()

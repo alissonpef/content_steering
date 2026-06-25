@@ -7,6 +7,7 @@ from .ppo import PPOHybridSelector
 from .sac import SACHybridSelector
 from .random_selector import RandomSelector
 from .best_selector import BestSelector
+from .round_robin import RoundRobin
 
 __all__ = [
     "Selector",
@@ -18,4 +19,5 @@ __all__ = [
     "SACHybridSelector",
     "RandomSelector",
     "BestSelector",
+    "RoundRobin",
 ]

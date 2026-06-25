@@ -37,7 +37,6 @@ from .context import (
     update_spam_target,
 )
 
-
 AVAILABLE_STRATEGIES = [
     "epsilon_greedy",
     "ucb1",
@@ -46,6 +45,7 @@ AVAILABLE_STRATEGIES = [
     "ppo_hybrid",
     "sac_hybrid",
     "random",
+    "round_robin",
     "best",
 ]
 

@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y curl && \
     rm kubectl
 
 COPY pyproject.toml uv.lock ./
-RUN uv pip install --system --no-cache -r pyproject.toml
+RUN uv sync --frozen --no-install-project
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ ./src/
 COPY config/ ./config/
