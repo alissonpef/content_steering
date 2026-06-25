@@ -57,7 +57,6 @@ spec:
       - name: steering
         image: content-steering/steering-server:latest
         imagePullPolicy: IfNotPresent
-        command: ["/bin/sh", "-c", "sleep 9999999"]
         ports:
         - containerPort: 30500
         env: []
@@ -88,10 +87,31 @@ spec:
           readOnly: true
         - name: data
           mountPath: /app/data
+        - name: code-vol
+          mountPath: /app/src/steering/server.py
+          subPath: server.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/ppo.py
+          subPath: ppo.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/sac.py
+          subPath: sac.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/ucb.py
+          subPath: ucb.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/thompson.py
+          subPath: thompson.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/epsilon_greedy.py
+          subPath: epsilon_greedy.py
       volumes:
       - name: certs
         secret:
           secretName: steering-server-certs
+      - name: code-vol
+        configMap:
+          name: steering-code
       - name: data
         emptyDir: {}
 ---

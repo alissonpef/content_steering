@@ -633,12 +633,20 @@ class SteeringServer:
                 LinUCBSelector,
                 EpsilonGreedy,
                 ThompsonSamplingSelector,
+            ),
+        ):
+            feedback_value = (
+                10000.0 / effective_latency if effective_latency > 0 else 0.0
+            )
+        elif isinstance(
+            self.selector_instance,
+            (
                 PPOHybridSelector,
                 SACHybridSelector,
             ),
         ):
             feedback_value = (
-                10000.0 / effective_latency if effective_latency > 0 else 0.0
+                100.0 / effective_latency if effective_latency > 0 else 0.0
             )
 
         async with self._steering_lock:
@@ -681,7 +689,7 @@ class SteeringServer:
             if isinstance(
                 self.selector_instance, (PPOHybridSelector, SACHybridSelector)
             ):
-                update_kwargs["done"] = True
+                update_kwargs["done"] = False
             self.selector_instance.update(
                 selector_arm_name, feedback_value, **update_kwargs
             )

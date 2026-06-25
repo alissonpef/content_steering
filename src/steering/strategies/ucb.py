@@ -4,7 +4,7 @@ from .base import Selector, selector_logger
 
 
 class UCB1Selector(Selector):
-    def __init__(self, c=2.0, gamma=0.95, monitor=None):
+    def __init__(self, c=2.0, gamma=0.99, monitor=None):
         super().__init__(monitor=monitor)
         self.c = c
         self.gamma = gamma
@@ -40,10 +40,11 @@ class UCB1Selector(Selector):
             self.total_pulls if self.total_pulls > 0 else sum(self.counts.values())
         )
         log_total_pulls = math.log(max(1, current_total_pulls_for_log))
+        scale = max(1.0, max(self.values.values()) if self.values else 1.0)
         for arm in self.nodes:
             count = max(1e-5, self.counts.get(arm, 1e-5))
             avg_reward = self.values.get(arm, 0.0)
-            exploration_bonus = math.sqrt((self.c * log_total_pulls) / count)
+            exploration_bonus = scale * math.sqrt((self.c * log_total_pulls) / count)
             ucb_scores[arm] = avg_reward + exploration_bonus
         return sorted(ucb_scores, key=lambda k: float(ucb_scores[k]), reverse=True)
 

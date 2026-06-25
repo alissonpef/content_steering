@@ -22,7 +22,7 @@ class ThompsonSamplingSelector(Selector):
         super().__init__(monitor=monitor)
         self.context_dim = max(1, d)
         self.alpha = alpha
-        self.gamma = kwargs_init.get("gamma", 0.95)
+        self.gamma = kwargs_init.get("gamma", 1.0)
         self.reward_scale = max(1e-6, reward_scale)
         self.prior_precision = max(min_precision, prior_precision)
         self.learning_rate = learning_rate
@@ -32,6 +32,7 @@ class ThompsonSamplingSelector(Selector):
         self.counts: dict = {}
         self.values: dict = {}
         self.total_pulls = 0
+        self.max_reward_observed = 1.0
         self._means: dict[str, np.ndarray] = {}
         self._precisions: dict[str, np.ndarray] = {}
 
@@ -74,7 +75,8 @@ class ThompsonSamplingSelector(Selector):
 
     def _reward_to_target(self, reward: float) -> float:
         reward_value = max(0.0, reward)
-        return 1.0 - math.exp(-reward_value / self.reward_scale)
+        scale = max(self.reward_scale, self.max_reward_observed)
+        return 1.0 - math.exp(-reward_value / scale)
 
     def select_arm(self, **kwargs) -> list[str]:
         contexts = kwargs.get("contexts")
@@ -145,6 +147,7 @@ class ThompsonSamplingSelector(Selector):
             return
 
         reward_value = max(0.0, feedback_value)
+        self.max_reward_observed = max(self.max_reward_observed, reward_value)
         target = self._reward_to_target(reward_value)
         x_sq = np.square(context_vector)
         updated_mean = self._means[chosen_arm_name].copy()
