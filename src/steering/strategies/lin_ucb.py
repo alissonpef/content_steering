@@ -15,6 +15,7 @@ class LinUCBSelector(Selector):
         super().__init__(monitor=monitor)
         self.d_env = d
         self.alpha = alpha
+        self.gamma = gamma
         self.n_arms: int = 0
         self.d_total: int = 0
         self.A: np.ndarray | None = None
@@ -112,8 +113,8 @@ class LinUCBSelector(Selector):
 
         x = self._augmented_context(chosen_arm_name, context)
         if self.A is not None and self.b is not None:
-            self.A = self.A + x @ x.T
-            self.b = self.b + feedback_value * x
+            self.A = self.gamma * self.A + x @ x.T
+            self.b = self.gamma * self.b + feedback_value * x
 
         self.pull_counts[chosen_arm_name] = self.pull_counts.get(chosen_arm_name, 0) + 1
         self.total_pulls += 1

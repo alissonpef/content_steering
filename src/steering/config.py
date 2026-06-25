@@ -5,7 +5,7 @@ import logging
 PROJECT_ROOT_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
-LOG_DIR = os.path.join(PROJECT_ROOT_DIR, "data", "logs", "raw")
+LOG_DIR = os.getenv("STEERING_LOG_DIR", "/app/logs/raw")
 CONFIG_PATH = os.path.join(PROJECT_ROOT_DIR, "config", "strategies.json")
 
 try:

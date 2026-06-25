@@ -336,7 +336,7 @@ def parse_json_column(series, prefix: str = ""):
             if isinstance(d, dict):
                 rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
                 indices.append(idx)
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             pass
     if not rows:
         return pd.DataFrame()

@@ -8,10 +8,12 @@ class EpsilonGreedy(Selector):
         epsilon: float,
         counts: dict,
         values: dict,
+        gamma: float = 0.95,
         monitor=None,
     ):
         super().__init__(monitor=monitor)
         self.epsilon = epsilon
+        self.gamma = gamma
         self.counts = counts if isinstance(counts, dict) else {}
         self.values = values if isinstance(values, dict) else {}
 
@@ -76,13 +78,19 @@ class EpsilonGreedy(Selector):
                 )
                 return
         if str_arm not in self.counts:
-            self.counts[str_arm] = 0
+            self.counts[str_arm] = 0.0
         if str_arm not in self.values:
             self.values[str_arm] = float("-inf")
-        self.counts[str_arm] += 1
+            
+        for arm in self.nodes:
+            if arm in self.counts:
+                self.counts[arm] *= self.gamma
+                
+        old_count_decayed = self.counts[str_arm]
+        self.counts[str_arm] += 1.0
         n = self.counts[str_arm]
         current_avg_reward = self.values[str_arm]
         if current_avg_reward == float("-inf"):
             self.values[str_arm] = feedback_value
         else:
-            self.values[str_arm] = ((n - 1) * current_avg_reward + feedback_value) / n
+            self.values[str_arm] = (old_count_decayed * current_avg_reward + feedback_value) / n

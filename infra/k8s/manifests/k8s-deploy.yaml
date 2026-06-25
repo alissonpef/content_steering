@@ -57,6 +57,7 @@ spec:
       - name: steering
         image: content-steering/steering-server:latest
         imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c", "sleep 9999999"]
         ports:
         - containerPort: 30500
         env: []
@@ -67,20 +68,20 @@ spec:
           requests:
             cpu: "100m"
             memory: "256Mi"
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 30500
-            scheme: HTTPS
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 30500
-            scheme: HTTPS
-          initialDelaySeconds: 10
-          periodSeconds: 10
+        # readinessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 30500
+        #     scheme: HTTPS
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 5
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 30500
+        #     scheme: HTTPS
+        #   initialDelaySeconds: 10
+        #   periodSeconds: 10
         volumeMounts:
         - name: certs
           mountPath: /app/certs/steering-service
@@ -92,8 +93,7 @@ spec:
         secret:
           secretName: steering-server-certs
       - name: data
-        hostPath:
-          path: /mnt/data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: ConfigMap

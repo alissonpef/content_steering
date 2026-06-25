@@ -27,6 +27,7 @@ from .strategies import (
     SACHybridSelector,
     RandomSelector,
     BestSelector,
+    RoundRobin,
 )
 
 from .config import CONFIG, STEERING_PORT, LOG_DIR, app_logger, _configure_all_loggers
@@ -57,15 +58,16 @@ def _create_strategy_instance(strategy_name: str, monitor_ref):
     cfg = CONFIG.get("strategies", {}).get(strategy_name, {})
     constructors = {
         "epsilon_greedy": lambda: EpsilonGreedy(
-            epsilon=cfg.get("epsilon", 0.2), counts={}, values={}, monitor=monitor_ref
+            epsilon=cfg.get("epsilon", 0.2), counts={}, values={}, gamma=cfg.get("gamma", 0.95), monitor=monitor_ref
         ),
-        "ucb1": lambda: UCB1Selector(c=cfg.get("c", 1.0), monitor=monitor_ref),
+        "ucb1": lambda: UCB1Selector(c=cfg.get("c", 1.0), gamma=cfg.get("gamma", 0.95), monitor=monitor_ref),
         "linucb": lambda: LinUCBSelector(
-            d=cfg.get("d", 14), alpha=cfg.get("alpha", 0.5), monitor=monitor_ref
+            d=cfg.get("d", 14), alpha=cfg.get("alpha", 0.5), gamma=cfg.get("gamma", 0.95), monitor=monitor_ref
         ),
         "thompson_sampling": lambda: ThompsonSamplingSelector(
             d=cfg.get("d", 14),
             alpha=cfg.get("alpha", 0.8),
+            gamma=cfg.get("gamma", 0.95),
             reward_scale=cfg.get("reward_scale", 10.0),
             prior_precision=cfg.get("prior_precision", 1.0),
             learning_rate=cfg.get("learning_rate", 0.75),
@@ -113,6 +115,7 @@ def _create_strategy_instance(strategy_name: str, monitor_ref):
             monitor=monitor_ref,
         ),
         "random": lambda: RandomSelector(monitor=monitor_ref),
+        "round_robin": lambda: RoundRobin(monitor=monitor_ref),
         "best": lambda: BestSelector(monitor=monitor_ref),
     }
     builder = constructors.get(strategy_name)
@@ -514,8 +517,6 @@ class SteeringServer:
         if not normalized_name or normalized_name == "cloud" or latency is None:
             return
 
-        latency = min(latency, 1000.0)
-
         prev_latency = self.last_real_latencies.get(normalized_name)
         if prev_latency is not None:
             smoothed = 0.15 * latency + 0.85 * prev_latency
@@ -608,9 +609,10 @@ class SteeringServer:
         if oracle_latencies:
             log_entry["all_servers_oracle_latency_json"] = json.dumps(oracle_latencies)
             best_server = min(oracle_latencies, key=lambda k: oracle_latencies[k])
-            log_entry["experienced_latency_ms_ORACLE"] = oracle_latencies.get(
-                normalized_latency_name
-            ) or oracle_latencies.get(srv_name)
+            oracle_val = oracle_latencies.get(normalized_latency_name)
+            if oracle_val is None:
+                oracle_val = oracle_latencies.get(srv_name)
+            log_entry["experienced_latency_ms_ORACLE"] = oracle_val
             log_entry["dynamic_best_server_latency"] = oracle_latencies[best_server]
         if self.active_log_filename:
             log_data_to_csv(log_entry, filename=self.active_log_filename)
@@ -679,7 +681,7 @@ class SteeringServer:
             if isinstance(
                 self.selector_instance, (PPOHybridSelector, SACHybridSelector)
             ):
-                update_kwargs["done"] = False
+                update_kwargs["done"] = True
             self.selector_instance.update(
                 selector_arm_name, feedback_value, **update_kwargs
             )

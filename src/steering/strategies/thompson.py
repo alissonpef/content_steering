@@ -17,10 +17,12 @@ class ThompsonSamplingSelector(Selector):
         min_precision: float = 1e-3,
         random_state: int | None = None,
         monitor=None,
+        **kwargs_init
     ):
         super().__init__(monitor=monitor)
         self.context_dim = max(1, d)
         self.alpha = alpha
+        self.gamma = kwargs_init.get("gamma", 0.95)
         self.reward_scale = max(1e-6, reward_scale)
         self.prior_precision = max(min_precision, prior_precision)
         self.learning_rate = learning_rate
@@ -152,7 +154,7 @@ class ThompsonSamplingSelector(Selector):
             prediction = self._sigmoid(float(updated_mean @ context_vector))
             curvature = prediction * (1.0 - prediction)
             updated_precision = np.maximum(
-                updated_precision + curvature * x_sq, self.min_precision
+                self.gamma * updated_precision + curvature * x_sq, self.min_precision
             )
             updated_mean = (
                 updated_mean

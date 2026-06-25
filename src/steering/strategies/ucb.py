@@ -4,12 +4,13 @@ from .base import Selector, selector_logger
 
 
 class UCB1Selector(Selector):
-    def __init__(self, c=2.0, monitor=None):
+    def __init__(self, c=2.0, gamma=0.95, monitor=None):
         super().__init__(monitor=monitor)
         self.c = c
+        self.gamma = gamma
         self.counts = {}
         self.values = {}
-        self.total_pulls = 0
+        self.total_pulls = 0.0
 
     def initialize(self, arms_names: list[str]):
         super().initialize(arms_names)
@@ -64,11 +65,17 @@ class UCB1Selector(Selector):
                 )
                 return
         if str_arm not in self.counts:
-            self.counts[str_arm] = 0
+            self.counts[str_arm] = 0.0
         if str_arm not in self.values:
             self.values[str_arm] = 0.0
-        self.counts[str_arm] += 1
+            
+        for arm in self.nodes:
+            if arm in self.counts:
+                self.counts[arm] *= self.gamma
+                
+        old_count_decayed = self.counts[str_arm]
+        self.counts[str_arm] += 1.0
         n = self.counts[str_arm]
         previous_value = self.values.get(str_arm, 0.0)
-        self.values[str_arm] = (((n - 1) * previous_value) + feedback_value) / n
-        self.total_pulls += 1
+        self.values[str_arm] = (old_count_decayed * previous_value + feedback_value) / n
+        self.total_pulls = self.total_pulls * self.gamma + 1.0
