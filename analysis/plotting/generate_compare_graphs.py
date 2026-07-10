@@ -31,10 +31,10 @@ WINDOW_SIZE = 5
 
 def _extract_scenario_from_filename(filename: str) -> str:
     name = os.path.splitext(filename)[0]
-    m = re.search(r"_scenario\d+_([a-zA-Z0-9_]+)_average$", name)
+    m = re.search("_scenario\\d+_([a-zA-Z0-9_]+)_average$", name)
     if m:
         return m.group(1).lower()
-    m2 = re.search(r"_(baseline|mobility|spam)_average$", name)
+    m2 = re.search("_(baseline|mobility|spam)_average$", name)
     if m2:
         return m2.group(1).lower()
     return "all"
@@ -92,12 +92,12 @@ def plot_average_latency_comparison(
             subdf = df.sort_values("sim_time_client").copy()
             if max_time is not None:
                 subdf = subdf[subdf["sim_time_client"] <= max_time].copy()
-            sub = subdf.dropna(subset=["sim_time_client", metric])  # type: ignore
+            sub = subdf.dropna(subset=["sim_time_client", metric])
             if sub.empty:
                 continue
             max_val = sub["sim_time_client"].max()
-            if max_val is not None and not pd.isna(max_val):  # type: ignore
-                scenario_xmax = max(scenario_xmax, float(max_val))  # type: ignore
+            if max_val is not None and (not pd.isna(max_val)):
+                scenario_xmax = max(scenario_xmax, float(max_val))
             style = get_strategy_style(strat_key)
             y = sub[metric].rolling(WINDOW_SIZE, center=True, min_periods=1).mean()
             ax.plot(
@@ -107,22 +107,19 @@ def plot_average_latency_comparison(
                 linewidth=style["linewidth"],
                 linestyle=style["linestyle"],
                 alpha=style["alpha"],
-                zorder=(50 if strat_key == "best" else style["zorder"]),
+                zorder=50 if strat_key == "best" else style["zorder"],
                 label=style["label"],
             )
             plotted.add(strat_key)
-
         if not plotted:
             logger.warning(
                 f"No data plotted for comparison in scenario: {scenario_key}"
             )
             plt.close(fig)
             continue
-
         nice_metric = metric.replace("_", " ").replace("ms", "").strip().title()
         if metric == "dynamic_best_server_latency":
             nice_metric = "Oracle Optimal Latency"
-
         title = f"Strategy Comparison ({scenario_key.title()}) — Avg. {nice_metric}"
         format_axes(
             ax,
@@ -130,18 +127,16 @@ def plot_average_latency_comparison(
             "Simulation Time (s)",
             "Latency (ms)",
             legend_loc="upper right",
-            xlim_max=(max_time if max_time is not None else scenario_xmax),
+            xlim_max=max_time if max_time is not None else scenario_xmax,
         )
         sort_legend_by_strategy(ax)
         fig.tight_layout()
-
         scenario_output_dir = os.path.join(
             output_dir, "comparative_analysis", scenario_key
         )
         base = metric.replace("experienced_latency_ms", "latency")
         save_figure(
-            fig,
-            os.path.join(scenario_output_dir, f"all_strategies_{base}_comparison"),
+            fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_comparison")
         )
         logger.info(f"Comparison plot saved to {scenario_output_dir}")
 
@@ -183,7 +178,6 @@ def main():
 def plot_cumulative_regret(
     agg_dir: str, output_dir: str, max_time: float | None = None
 ):
-
     entries_by_scenario: dict[str, list[tuple[str, str, pd.DataFrame]]] = {}
     for fn in sorted(os.listdir(agg_dir)):
         if not (fn.startswith("log_") and "_average" in fn and fn.endswith(".csv")):
@@ -233,19 +227,17 @@ def plot_cumulative_regret(
                     "experienced_latency_ms",
                     "dynamic_best_server_latency",
                 ]
-            )  # type: ignore
+            )
             if sub.empty:
                 continue
-
             sub["regret"] = (
                 sub["experienced_latency_ms"] - sub["dynamic_best_server_latency"]
             )
-            sub["regret"] = sub["regret"].clip(lower=0)  # Regret is non-negative
+            sub["regret"] = sub["regret"].clip(lower=0)
             sub["cumulative_regret"] = sub["regret"].cumsum()
-
             max_val_reg = sub["sim_time_client"].max()
-            if max_val_reg is not None and not pd.isna(max_val_reg):  # type: ignore
-                scenario_xmax = max(scenario_xmax, float(max_val_reg))  # type: ignore
+            if max_val_reg is not None and (not pd.isna(max_val_reg)):
+                scenario_xmax = max(scenario_xmax, float(max_val_reg))
             style = get_strategy_style(strat_key)
             ax.plot(
                 sub["sim_time_client"].to_numpy(),
@@ -258,18 +250,16 @@ def plot_cumulative_regret(
                 label=style["label"],
             )
             plotted.add(strat_key)
-
         if not plotted:
             plt.close(fig)
             continue
-
         format_axes(
             ax,
             f"Cumulative Regret ({scenario_key.title()})",
             "Simulation Time (s)",
             "Cumulative Regret (ms)",
             legend_loc="upper left",
-            xlim_max=(max_time if max_time is not None else scenario_xmax),
+            xlim_max=max_time if max_time is not None else scenario_xmax,
         )
         sort_legend_by_strategy(ax)
         fig.tight_layout()
@@ -293,9 +283,11 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
         try:
             df = pd.read_csv(path)
             cnt_cols = sorted(
-                c
-                for c in df.columns
-                if c.startswith("count_") and not c.endswith("_std_agg")
+                (
+                    c
+                    for c in df.columns
+                    if c.startswith("count_") and (not c.endswith("_std_agg"))
+                )
             )
             if not cnt_cols:
                 continue
@@ -322,13 +314,11 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
             return len(STRATEGY_LEGEND_ORDER)
 
     for scenario_key, entries in sorted(entries_by_scenario.items()):
-        # Build a matrix: rows = strategies, cols = servers
         server_keys = set()
         for strat, fn, df, cnt_cols in entries:
             for c in cnt_cols:
                 server_keys.add(c.replace("count_", "").replace("_", "-"))
         server_keys = sorted(list(server_keys))
-
         matrix = []
         labels = []
         for strat_key, fn, df, cnt_cols in sorted(entries, key=_order):
@@ -342,7 +332,7 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
             )
             if last_row is None:
                 continue
-            total_pulls = sum(last_row[c] for c in cnt_cols)
+            total_pulls = sum((last_row[c] for c in cnt_cols))
             if total_pulls <= 0:
                 continue
             for sk in server_keys:
@@ -351,10 +341,8 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
                 row_data.append(val / total_pulls)
             matrix.append(row_data)
             labels.append(get_strategy_style(strat_key)["label"])
-
         if not matrix:
             continue
-
         fig, ax = plt.subplots(figsize=(6, 4 + 0.3 * len(matrix)))
         sns.heatmap(
             matrix,
@@ -363,7 +351,7 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
             cmap="YlGnBu",
             xticklabels=[get_server_label(sk) for sk in server_keys],
             yticklabels=labels,
-            ax=ax,  # type: ignore
+            ax=ax,
         )
         ax.set_title(f"Final Selection Distribution ({scenario_key.title()})", pad=15)
         ax.set_xlabel("Servers")

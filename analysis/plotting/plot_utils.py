@@ -336,7 +336,7 @@ def parse_json_column(series, prefix: str = ""):
             if isinstance(d, dict):
                 rows.append({f"{prefix}{k.replace('-', '_')}": v for k, v in d.items()})
                 indices.append(idx)
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             pass
     if not rows:
         return pd.DataFrame()
@@ -344,7 +344,7 @@ def parse_json_column(series, prefix: str = ""):
 
 
 def extract_scenario_from_filename(filename_no_ext: str) -> str:
-    # Retorna o sufixo (cenário) de um nome de arquivo (ex: log_linucb_scenario1.csv -> scenario1)
+
     name = filename_no_ext
     if name.startswith("log_"):
         name = name[4:]

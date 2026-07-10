@@ -20,7 +20,6 @@ from plot_utils import (
     KNOWN_SERVER_KEYS_UNDERSCORE,
     parse_json_column,
 )
-
 import logging
 
 logger = logging.getLogger("plot_aggregated_logs")
@@ -50,7 +49,7 @@ def _resolve_oracle_column(df: pd.DataFrame) -> str | None:
         "experienced_latency_ms_oracle",
     ]
     for col in candidates:
-        if col in df.columns and not pd.Series(df[col]).dropna().empty:
+        if col in df.columns and (not pd.Series(df[col]).dropna().empty):
             return col
     return None
 
@@ -87,13 +86,13 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     xlim = None
     if "sim_time_client" in df.columns:
         max_val = df["sim_time_client"].max()
-        if max_val is not None and not pd.isna(max_val):  # type: ignore
-            xlim = float(max_val)  # type: ignore
+        if max_val is not None and (not pd.isna(max_val)):
+            xlim = float(max_val)
     has_std = "experienced_latency_ms_std_agg" in df.columns
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
-    h, labels = [], []
+    h, labels = ([], [])
     if "experienced_latency_ms" in df.columns:
-        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])  # type: ignore
+        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
         (line,) = ax.plot(
             sub["sim_time_client"].to_numpy(),
             sub["experienced_latency_ms"].to_numpy(),
@@ -109,7 +108,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
             )
     oracle_col = _resolve_oracle_column(df)
     if oracle_col is not None:
-        sub = df.dropna(subset=["sim_time_client", oracle_col])  # type: ignore
+        sub = df.dropna(subset=["sim_time_client", oracle_col])
         (line,) = ax.plot(
             sub["sim_time_client"].to_numpy(),
             sub[oracle_col].to_numpy(),
@@ -128,13 +127,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
         std_col = next((c for c in std_candidates if c in df.columns), None)
         if has_std and std_col is not None:
             std = df.loc[sub.index, std_col]
-            _shade(
-                ax,
-                sub["sim_time_client"],
-                sub[oracle_col],
-                std,
-                CB_ORANGE,
-            )
+            _shade(ax, sub["sim_time_client"], sub[oracle_col], std, CB_ORANGE)
     if h:
         format_axes(
             ax,
@@ -151,7 +144,11 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     else:
         plt.close(fig)
     value_cols = sorted(
-        c for c in df.columns if c.startswith("value_") and not c.endswith("_std_agg")
+        (
+            c
+            for c in df.columns
+            if c.startswith("value_") and (not c.endswith("_std_agg"))
+        )
     )
     if value_cols:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
@@ -164,7 +161,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
             ylabel = "Avg. Estimated Reward"
         for col in value_cols:
             sk = col.replace("value_", "").replace("_", "-")
-            sub = df.dropna(subset=["sim_time_client", col])  # type: ignore
+            sub = df.dropna(subset=["sim_time_client", col])
             if not sub.empty:
                 ax.plot(
                     sub["sim_time_client"].to_numpy(),
@@ -195,16 +192,20 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
         fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "2_avg_rl_estimated_values"))
     cnt_cols = sorted(
-        c for c in df.columns if c.startswith("count_") and not c.endswith("_std_agg")
+        (
+            c
+            for c in df.columns
+            if c.startswith("count_") and (not c.endswith("_std_agg"))
+        )
     )
-    cols3, prefix3, ylabel3 = [], "", "Avg. Selections (Pulls)"
+    cols3, prefix3, ylabel3 = ([], "", "Avg. Selections (Pulls)")
     if cnt_cols:
-        cols3, prefix3 = cnt_cols, "count_"
+        cols3, prefix3 = (cnt_cols, "count_")
     if cols3:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
         for col in cols3:
             sk = col.replace(prefix3, "").replace("_", "-")
-            sub = df.dropna(subset=["sim_time_client", col])  # type: ignore
+            sub = df.dropna(subset=["sim_time_client", col])
             if not sub.empty:
                 ax.plot(
                     sub["sim_time_client"].to_numpy(),
@@ -233,9 +234,8 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
         )
         fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "3_avg_rl_selection_counts"))
-    if (
-        "all_servers_oracle_latency_json" in df.columns
-        and not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
+    if "all_servers_oracle_latency_json" in df.columns and (
+        not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
@@ -245,7 +245,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             lat_cols = sorted(
-                c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE
+                (c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
             )
             for col in lat_cols:
                 sk = col.replace("_", "-")
@@ -298,7 +298,7 @@ def main():
     configure_logger(logger, args.verbose)
     if args.csv_filename:
         path = args.csv_filename
-        if not os.path.isabs(path) and not os.path.exists(path):
+        if not os.path.isabs(path) and (not os.path.exists(path)):
             candidate = os.path.join(PROCESSED_DIR, os.path.basename(path))
             if os.path.exists(candidate):
                 path = candidate

@@ -9,7 +9,9 @@ import logging
 logger = logging.getLogger("aggregate_logs")
 PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_RAW_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "data", "logs", "raw")
-DEFAULT_PROCESSED_LOGS_DIR = os.path.join(PROJECT_ROOT_DIR, "data", "logs", "aggregated")
+DEFAULT_PROCESSED_LOGS_DIR = os.path.join(
+    PROJECT_ROOT_DIR, "data", "logs", "aggregated"
+)
 MAX_AGGREGATION_TIME_SECONDS = 300
 os.makedirs(DEFAULT_PROCESSED_LOGS_DIR, exist_ok=True)
 EXPECTED_MAIN_NUMERIC_COLS = [
@@ -65,7 +67,7 @@ def find_dynamic_best_server_and_latency_for_agg(row_series):
             [best_server_name_hyphen, best_server_latency],
             index=["dynamic_best_server_name_temp", "dynamic_best_server_latency"],
         )
-    except (json.JSONDecodeError, TypeError, AttributeError):
+    except json.JSONDecodeError, TypeError, AttributeError:
         logger.debug(
             f"JSON error in find_dynamic_best_server_and_latency_for_agg: {str(row_series['all_servers_oracle_latency_json'])[:70]}"
         )
@@ -100,7 +102,7 @@ def parse_json_series_to_dataframe(series: pd.Series, prefix: str = "") -> pd.Da
                 temp_parsed_dicts.append(normalized_dict)
             else:
                 temp_parsed_dicts.append({})
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             logger.debug(
                 f"Failed to parse JSON in parse_json_series_to_dataframe: '{str(json_str)[:70]}...'"
             )
@@ -270,10 +272,10 @@ def aggregate_strategy_logs(
     aggregated_df = (
         combined_main_df.groupby("sim_time_group")[main_cols_to_agg]
         .mean()
-        .reset_index()  # type: ignore
+        .reset_index()
     )
     std_df = (
-        combined_main_df.groupby("sim_time_group")[main_cols_to_agg].std().reset_index()  # type: ignore
+        combined_main_df.groupby("sim_time_group")[main_cols_to_agg].std().reset_index()
     )
     std_df.rename(columns={c: f"{c}_std_agg" for c in main_cols_to_agg}, inplace=True)
     aggregated_df = pd.merge(aggregated_df, std_df, on="sim_time_group", how="left")
@@ -308,12 +310,12 @@ def aggregate_strategy_logs(
                 avg_json_df = (
                     combined_json_df.groupby("sim_time_group")[numeric_cols]
                     .mean()
-                    .reset_index()  # type: ignore
+                    .reset_index()
                 )
                 std_json_df = (
                     combined_json_df.groupby("sim_time_group")[numeric_cols]
                     .std()
-                    .reset_index()  # type: ignore
+                    .reset_index()
                 )
                 std_json_df.rename(
                     columns={c: f"{c}_std_agg" for c in numeric_cols}, inplace=True
@@ -377,7 +379,7 @@ def aggregate_strategy_logs(
     final_cols = [col for col in preferred_order if col in existing_cols]
     remaining_cols = sorted(list(existing_cols - set(final_cols)))
     final_cols.extend(remaining_cols)
-    aggregated_df_final = aggregated_df[final_cols].sort_values(by="sim_time_client")  # type: ignore
+    aggregated_df_final = aggregated_df[final_cols].sort_values(by="sim_time_client")
     output_base_name = f"log_{strategy_name}{suffix_pattern}_average"
     output_file = os.path.join(output_dir, f"{output_base_name}.csv")
     aggregated_df_final.to_csv(output_file, index=False, float_format="%.3f")

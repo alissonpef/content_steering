@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "plotting"))
-from plot_utils import (  # type: ignore
+from plot_utils import (
     apply_global_style,
     configure_logger,
     save_figure,
@@ -95,7 +95,7 @@ def analyze_server_choices(
             for _, row in df.iterrows():
                 dec = row["steering_decision_main_server"]
                 raw = row["all_servers_oracle_latency_json"]
-                if pd.isna(dec) or pd.isna(raw) or "N/A" in str(dec):  # type: ignore
+                if pd.isna(dec) or pd.isna(raw) or "N/A" in str(dec):
                     continue
                 total += 1
                 try:
@@ -110,7 +110,7 @@ def analyze_server_choices(
                         continue
                     if dec == min(valid, key=lambda k: float(valid[k])):
                         correct += 1
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     continue
             if total > 0:
                 results.setdefault(sk, {"total": 0, "correct": 0})
@@ -199,7 +199,7 @@ def _save_table_image(df, path_without_ext, title):
         colLabels=df.columns,
         cellLoc="center",
         loc="center",
-        bbox=[0, 0, 1, 1],  # type: ignore
+        bbox=[0, 0, 1, 1],
     )
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(10)

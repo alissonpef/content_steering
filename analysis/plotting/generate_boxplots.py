@@ -33,10 +33,10 @@ def _extract_strategy(fname_no_ext: str) -> str:
 
 def _extract_scenario_from_filename(filename: str) -> str:
     name = os.path.splitext(filename)[0]
-    m = re.search(r"_scenario\d+_([a-zA-Z0-9_]+)_average$", name)
+    m = re.search("_scenario\\d+_([a-zA-Z0-9_]+)_average$", name)
     if m:
         return m.group(1).lower()
-    m2 = re.search(r"_(baseline|mobility|spam|spam_extreme)_average$", name)
+    m2 = re.search("_(baseline|mobility|spam|spam_extreme)_average$", name)
     if m2:
         return m2.group(1).lower()
     return "all"
@@ -46,7 +46,7 @@ def _apply_box_style(bp, color: str, is_hero: bool = False):
     edge_lw = 2.2 if is_hero else 1.2
     for box in bp["boxes"]:
         box.set_facecolor(color)
-        box.set_alpha(0.55 if not is_hero else 0.70)
+        box.set_alpha(0.55 if not is_hero else 0.7)
         box.set_edgecolor(color)
         box.set_linewidth(edge_lw)
     for med in bp["medians"]:
@@ -72,8 +72,8 @@ def generate_comparison_boxplot(
     all_data: dict, metric: str, output_dir: str, scenario_key: str
 ):
     ordered_keys = [k for k in STRATEGY_LEGEND_ORDER if k in all_data]
-    ordered_keys += sorted(k for k in all_data if k not in ordered_keys)
-    plot_data, labels, colors, heroes = [], [], [], []
+    ordered_keys += sorted((k for k in all_data if k not in ordered_keys))
+    plot_data, labels, colors, heroes = ([], [], [], [])
     for sk in ordered_keys:
         df = all_data[sk]
         if df.empty or metric not in df.columns or df[metric].dropna().empty:
@@ -92,7 +92,7 @@ def generate_comparison_boxplot(
     )
     for i, (box, color, hero) in enumerate(zip(bp["boxes"], colors, heroes)):
         box.set_facecolor(color)
-        box.set_alpha(0.55 if not hero else 0.70)
+        box.set_alpha(0.55 if not hero else 0.7)
         box.set_edgecolor(color)
         box.set_linewidth(2.2 if hero else 1.2)
     for med in bp["medians"]:
@@ -167,7 +167,6 @@ def main():
     if not entries_by_scenario:
         logger.warning("No scenario data available for comparison boxplots.")
         return
-
     for scenario_key, all_data in sorted(entries_by_scenario.items()):
         generate_comparison_boxplot(
             all_data, args.metric, args.output_dir, scenario_key

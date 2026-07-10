@@ -32,18 +32,14 @@ PROJECT_ROOT = os.path.abspath(
 )
 RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "raw")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "individual_runs")
-ACTUAL_CACHE_NAMES_HYPHEN = [
-    "delivery-node-1",
-    "delivery-node-2",
-    "delivery-node-3",
-]
+ACTUAL_CACHE_NAMES_HYPHEN = ["delivery-node-1", "delivery-node-2", "delivery-node-3"]
 MAX_PLOT_TIME_SECONDS = 300
 
 
 def find_dynamic_best(row):
     raw = row.get("all_servers_oracle_latency_json")
     if pd.isna(raw):
-        return None, np.nan
+        return (None, np.nan)
     try:
         lats = json.loads(raw)
         valid = {
@@ -53,11 +49,11 @@ def find_dynamic_best(row):
             and isinstance(v, (int, float))
         }
         if not valid:
-            return None, np.nan
+            return (None, np.nan)
         best = min(valid, key=lambda k: float(valid[k]))
-        return best, valid[best]
+        return (best, valid[best])
     except Exception:
-        return None, np.nan
+        return (None, np.nan)
 
 
 def generate_plots(csv_path: str, max_time: float | None = None):
@@ -81,8 +77,8 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     xlim = None
     if "sim_time_client" in df.columns:
         max_val = df["sim_time_client"].max()
-        if max_val is not None and not pd.isna(max_val):  # type: ignore
-            xlim = float(max_val)  # type: ignore
+        if max_val is not None and (not pd.isna(max_val)):
+            xlim = float(max_val)
     strat_key = "N/A"
     if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
         strat_key = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
@@ -100,9 +96,9 @@ def generate_plots(csv_path: str, max_time: float | None = None):
         df["dynamic_best_server_latency"] = np.nan
     window = 10
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
-    handles, labels = [], []
+    handles, labels = ([], [])
     if "experienced_latency_ms" in df.columns:
-        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])  # type: ignore
+        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
         if len(tmp) >= window:
             ma = (
                 tmp["experienced_latency_ms"]
@@ -118,7 +114,7 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             handles.append(h)
             labels.append(f"MA({window}s) — Chosen")
     if "dynamic_best_server_latency" in df.columns:
-        tmp = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])  # type: ignore
+        tmp = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])
         if len(tmp) >= window:
             ma = (
                 tmp["dynamic_best_server_latency"]
@@ -151,10 +147,10 @@ def generate_plots(csv_path: str, max_time: float | None = None):
         plt.close(fig)
     if "steering_decision_main_server" in df.columns:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
-        h2, l2 = [], []
+        h2, l2 = ([], [])
         tmp = df.dropna(
             subset=["steering_decision_main_server", "sim_time_client"]
-        ).copy()  # type: ignore
+        ).copy()
         tmp = tmp.drop_duplicates(subset=["sim_time_client"], keep="first")
         all_entities = sorted(
             set(ACTUAL_CACHE_NAMES_HYPHEN)
@@ -208,9 +204,8 @@ def generate_plots(csv_path: str, max_time: float | None = None):
         save_figure(fig, os.path.join(img_dir, "2_steering_decisions"))
     else:
         logger.info("Plot 2 skipped: no steering decision column.")
-    if (
-        "rl_values_json" in df.columns
-        and not pd.Series(df["rl_values_json"]).dropna().empty
+    if "rl_values_json" in df.columns and (
+        not pd.Series(df["rl_values_json"]).dropna().empty
     ):
         parsed = parse_json_column(df["rl_values_json"], prefix="value_")
         if not parsed.empty:
@@ -220,10 +215,12 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             value_cols = sorted(
-                c
-                for c in merged.columns
-                if c.startswith("value_")
-                and c.replace("value_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
+                (
+                    c
+                    for c in merged.columns
+                    if c.startswith("value_")
+                    and c.replace("value_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
+                )
             )
             for col in value_cols:
                 sk = col.replace("value_", "").replace("_", "-")
@@ -258,7 +255,7 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     ylabel4 = "Selections (Pulls)"
     if "rl_counts_json" in df.columns:
         counts_col = "rl_counts_json"
-    if counts_col and not pd.Series(df[counts_col]).dropna().empty:
+    if counts_col and (not pd.Series(df[counts_col]).dropna().empty):
         parsed = parse_json_column(df[counts_col], prefix="data_")
         if not parsed.empty:
             merged = pd.concat(
@@ -267,10 +264,12 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             cnt_cols = sorted(
-                c
-                for c in merged.columns
-                if c.startswith("data_")
-                and c.replace("data_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
+                (
+                    c
+                    for c in merged.columns
+                    if c.startswith("data_")
+                    and c.replace("data_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
+                )
             )
             for col in cnt_cols:
                 sk = col.replace("data_", "").replace("_", "-")
@@ -294,9 +293,8 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             )
             fig.tight_layout()
             save_figure(fig, os.path.join(img_dir, "4_rl_selection_counts"))
-    if (
-        "all_servers_oracle_latency_json" in df.columns
-        and not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
+    if "all_servers_oracle_latency_json" in df.columns and (
+        not pd.Series(df["all_servers_oracle_latency_json"]).dropna().empty
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
@@ -306,7 +304,7 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             lat_cols = sorted(
-                c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE
+                (c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
             )
             for col in lat_cols:
                 sk = col.replace("_", "-")
@@ -385,7 +383,7 @@ def main():
                 if (
                     fn.startswith("log_")
                     and fn.endswith(".csv")
-                    and "_average" not in fn
+                    and ("_average" not in fn)
                 ):
                     generate_plots(
                         os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time
