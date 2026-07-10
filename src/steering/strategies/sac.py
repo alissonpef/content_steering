@@ -1,14 +1,11 @@
 from __future__ import annotations
 import typing
-
 import json
 import math
 import os
 from collections import deque
 from dataclasses import dataclass
-
 import numpy as np
-
 from .base import Selector, selector_logger
 
 
@@ -64,8 +61,8 @@ class SACHybridSelector(Selector):
         self,
         hidden_dim: int = 64,
         critic_hidden_dim: int = 64,
-        actor_learning_rate: float = 5e-3,
-        critic_learning_rate: float = 5e-3,
+        actor_learning_rate: float = 0.005,
+        critic_learning_rate: float = 0.005,
         gamma: float = 0.99,
         tau: float = 0.02,
         entropy_coef: float = 0.05,
@@ -92,10 +89,10 @@ class SACHybridSelector(Selector):
         self.batch_size = max(1, batch_size)
         self.replay_size = max(64, replay_size)
         self.update_steps = max(1, update_steps)
-        self.reward_scale = max(1e-6, reward_scale)
-        self.min_std = max(1e-3, min_std)
+        self.reward_scale = max(1e-06, reward_scale)
+        self.min_std = max(0.001, min_std)
         self.max_std = max(self.min_std, max_std)
-        self.max_grad_norm = max(1e-6, max_grad_norm)
+        self.max_grad_norm = max(1e-06, max_grad_norm)
         self.rng = np.random.default_rng(random_state)
         self.quality_levels = quality_levels or [0, 1, 2, 3, 4, 5]
         self.policy_path = policy_path
@@ -149,8 +146,8 @@ class SACHybridSelector(Selector):
             if (
                 self._actor_params["W1"].shape[0] == state_dim
                 and self._actor_params["W_abr"].shape[1] == len(self.quality_levels)
-                and self._actor_params["W_mu"].shape[1] == n_arms
-                and self._critic1_params["W1"].shape[0] == critic_input_dim
+                and (self._actor_params["W_mu"].shape[1] == n_arms)
+                and (self._critic1_params["W1"].shape[0] == critic_input_dim)
             ):
                 return
             selector_logger.info(
@@ -247,7 +244,7 @@ class SACHybridSelector(Selector):
                 for arm in self.nodes
             }
             latencies = {arm: None for arm in self.nodes}
-        return contexts, latencies or {}
+        return (contexts, latencies or {})
 
     def _build_state(
         self,
@@ -335,17 +332,15 @@ class SACHybridSelector(Selector):
         grad_b1 = d_z1
         dx = params["W1"] @ d_z1
         action_grad = dx[self._state_dim :]
-        return {
-            "W1": grad_W1,
-            "b1": grad_b1,
-            "W2": grad_W2,
-            "b2": grad_b2,
-        }, action_grad
+        return (
+            {"W1": grad_W1, "b1": grad_b1, "W2": grad_W2, "b2": grad_b2},
+            action_grad,
+        )
 
     @staticmethod
     def _clip_gradients(grads: dict[str, np.ndarray], max_norm: float):
         total_norm = math.sqrt(
-            sum(float(np.sum(np.square(grad))) for grad in grads.values())
+            sum((float(np.sum(np.square(grad))) for grad in grads.values()))
         )
         if total_norm <= max_norm or total_norm == 0.0:
             return grads
@@ -363,7 +358,7 @@ class SACHybridSelector(Selector):
     ):
         beta1 = 0.9
         beta2 = 0.999
-        eps = 1e-8
+        eps = 1e-08
         step += 1
         for name, grad in grads.items():
             moments_m[name] = beta1 * moments_m[name] + (1.0 - beta1) * grad
@@ -457,7 +452,6 @@ class SACHybridSelector(Selector):
                     if sample.done
                     else reward + self.gamma * self._target_value(next_state)
                 )
-
                 q1_forward = self._critic_forward(
                     self._critic1_params,
                     sample.state,
@@ -481,7 +475,6 @@ class SACHybridSelector(Selector):
                 for name in critic1_grads:
                     critic1_grads[name] += q1_sample_grads[name]
                     critic2_grads[name] += q2_sample_grads[name]
-
                 actor_forward = self._actor_forward(sample.state)
                 steering_raw = actor_forward["mu"] + actor_forward[
                     "std"
@@ -545,7 +538,6 @@ class SACHybridSelector(Selector):
                 }
                 for name in actor_grads:
                     actor_grads[name] += actor_sample_grads[name]
-
             scale = 1.0 / max(1, batch_size)
             for grads in (critic1_grads, critic2_grads, actor_grads):
                 for name in grads:
@@ -664,13 +656,12 @@ class SACHybridSelector(Selector):
         transition = pending_list.pop(0)
         transition.reward = reward_value
         transition.done = bool(kwargs.get("done", False))
-        if transition.done or kwargs.get("force_train", False):
-            next_state = (
-                transition.state
-                if kwargs.get("next_state") is None
-                else np.asarray(kwargs.get("next_state"), dtype=float)
-            )
-            self._finalize_transition(transition, next_state, terminal=transition.done)
+        next_state = (
+            transition.state
+            if kwargs.get("next_state") is None
+            else np.asarray(kwargs.get("next_state"), dtype=float)
+        )
+        self._finalize_transition(transition, next_state, terminal=transition.done)
 
     @property
     def real_counts(self):
@@ -758,7 +749,7 @@ class SACHybridSelector(Selector):
                 dtype=object,
             ),
         }
-        np.savez_compressed(target_path, **payload)  # type: ignore
+        np.savez_compressed(target_path, **payload)
         return target_path
 
     def load_policy(self, path: str | None = None):

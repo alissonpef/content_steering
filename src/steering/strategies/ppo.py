@@ -1,13 +1,10 @@
 from __future__ import annotations
-
 import json
 import math
 import os
 import typing
 from dataclasses import dataclass
-
 import numpy as np
-
 from .base import Selector, selector_logger
 
 
@@ -50,7 +47,7 @@ class PPOHybridSelector(Selector):
     def __init__(
         self,
         hidden_dim: int = 64,
-        learning_rate: float = 5e-3,
+        learning_rate: float = 0.005,
         gamma: float = 0.99,
         clip_ratio: float = 0.2,
         entropy_coef: float = 0.05,
@@ -75,10 +72,10 @@ class PPOHybridSelector(Selector):
         self.value_coef = value_coef
         self.batch_size = max(1, batch_size)
         self.update_epochs = max(1, update_epochs)
-        self.reward_scale = max(1e-6, reward_scale)
-        self.min_std = max(1e-3, min_std)
+        self.reward_scale = max(1e-06, reward_scale)
+        self.min_std = max(0.001, min_std)
         self.max_std = max(self.min_std, max_std)
-        self.max_grad_norm = max(1e-6, max_grad_norm)
+        self.max_grad_norm = max(1e-06, max_grad_norm)
         self.rng = np.random.default_rng(random_state)
         self.quality_levels = quality_levels or [0, 1, 2, 3, 4, 5]
         self.policy_path = policy_path
@@ -120,7 +117,7 @@ class PPOHybridSelector(Selector):
             if (
                 self._params["W1"].shape[0] == input_dim
                 and self._params["W_abr"].shape[1] == len(self.quality_levels)
-                and self._params["W_mu"].shape[1] == n_arms
+                and (self._params["W_mu"].shape[1] == n_arms)
             ):
                 return
             selector_logger.info(
@@ -150,9 +147,7 @@ class PPOHybridSelector(Selector):
             ),
             "b_log_std": np.full(n_arms, math.log(0.5), dtype=float),
             "W_value": self.rng.normal(
-                0.0,
-                1.0 / math.sqrt(max(1, self.hidden_dim)),
-                size=(self.hidden_dim, 1),
+                0.0, 1.0 / math.sqrt(max(1, self.hidden_dim)), size=(self.hidden_dim, 1)
             ),
             "b_value": np.zeros(1, dtype=float),
         }
@@ -184,7 +179,7 @@ class PPOHybridSelector(Selector):
                 for arm in self.nodes
             }
             latencies = {arm: None for arm in self.nodes}
-        return contexts, latencies or {}
+        return (contexts, latencies or {})
 
     def _build_state(
         self,
@@ -329,7 +324,7 @@ class PPOHybridSelector(Selector):
 
     def _clip_gradients(self, grads: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         total_norm = math.sqrt(
-            sum(float(np.sum(np.square(grad))) for grad in grads.values())
+            sum((float(np.sum(np.square(grad))) for grad in grads.values()))
         )
         if total_norm <= self.max_grad_norm or total_norm == 0.0:
             return grads
@@ -340,7 +335,7 @@ class PPOHybridSelector(Selector):
         self._adam_t += 1
         beta1 = 0.9
         beta2 = 0.999
-        eps = 1e-8
+        eps = 1e-08
         for name, grad in grads.items():
             self._adam_m[name] = beta1 * self._adam_m[name] + (1.0 - beta1) * grad
             self._adam_v[name] = beta2 * self._adam_v[name] + (1.0 - beta2) * np.square(
@@ -355,7 +350,8 @@ class PPOHybridSelector(Selector):
         new_logprob = self._logprob(sample.abr_action, sample.steering_action, forward)
         ratio = math.exp(max(-20.0, min(20.0, new_logprob - sample.old_logprob)))
         use_unclipped = not (
-            (adv > 0.0 and ratio > 1.0 + self.clip_ratio)
+            adv > 0.0
+            and ratio > 1.0 + self.clip_ratio
             or (adv < 0.0 and ratio < 1.0 - self.clip_ratio)
         )
         policy_scale = adv * ratio if use_unclipped else 0.0
@@ -404,7 +400,7 @@ class PPOHybridSelector(Selector):
         advantages = returns - values
         advantages = advantages - float(np.mean(advantages))
         adv_std = float(np.std(advantages))
-        if adv_std > 1e-8:
+        if adv_std > 1e-08:
             advantages = advantages / adv_std
         for _ in range(self.update_epochs):
             grads = self._zero_grads()
@@ -445,13 +441,9 @@ class PPOHybridSelector(Selector):
             return
         transition = pending_list.pop(0)
         transition.reward = reward_value
-        transition.done = bool(kwargs.get("done", True))
+        transition.done = bool(kwargs.get("done", False))
         self._buffer.append(transition)
-        if (
-            len(self._buffer) >= self.batch_size
-            or kwargs.get("force_train", False)
-            or self._buffer[-1].done
-        ):
+        if len(self._buffer) >= self.batch_size or kwargs.get("force_train", False):
             self._train_buffer()
 
     @property
@@ -519,7 +511,7 @@ class PPOHybridSelector(Selector):
             ),
             dtype=object,
         )
-        np.savez_compressed(target_path, **payload)  # type: ignore
+        np.savez_compressed(target_path, **payload)
         return target_path
 
     def load_policy(self, path: str | None = None):

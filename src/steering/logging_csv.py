@@ -4,7 +4,6 @@ import threading
 from .config import LOG_DIR, app_logger
 
 _csv_write_lock = threading.Lock()
-
 CSV_HEADERS = [
     "timestamp_server",
     "sim_time_client",

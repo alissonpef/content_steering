@@ -1,13 +1,10 @@
 import socket
 import os
 import time
-
 import requests
-
 
 DEFAULT_NODE_NAMES = ("delivery-node-1", "delivery-node-2", "delivery-node-3")
 DEFAULT_PROBE_PATH = "/Eldorado/4sec/avc/manifest.mpd"
-
 _DNS_CACHE_TTL_SECONDS = 60.0
 _dns_cache: dict[str, tuple[str, float]] = {}
 
@@ -40,13 +37,10 @@ def _service_url_and_headers(node_name: str, probe_path: str) -> tuple[str, dict
     path = probe_path if probe_path.startswith("/") else f"/{probe_path}"
     url = f"http://{ip}:80{path}"
     headers = {"Host": hostname}
-    return url, headers
+    return (url, headers)
 
 
 def warmup_nodes(nodes: list[str], probe_path: str = DEFAULT_PROBE_PATH):
-    """Send two requests per node so the keep-alive connection is established
-    before the first timed probe.  The second request is the one that will
-    benefit from connection reuse."""
     for node_name in nodes:
         url, headers = _service_url_and_headers(node_name, probe_path)
         for _ in range(2):
@@ -63,34 +57,20 @@ def measure_latency_ms(
     timeout_seconds: float = 1.0,
     n_samples: int = 3,
 ) -> float:
-    """Measure TTFB latency using the median of *n_samples* consecutive requests.
-
-    The first request is a connection warm-up (re-establishes TCP keep-alive if
-    the idle connection was dropped by the server).  The remaining samples are
-    timed; the median is returned so that single-outlier spikes (e.g. from a
-    TCP reconnect or Linux scheduler jitter) are rejected.
-    """
     url, headers = _service_url_and_headers(node_name, probe_path)
     samples: list[float] = []
     for i in range(n_samples):
         t0 = time.perf_counter()
         response = _session.get(
-            url,
-            headers=headers,
-            timeout=timeout_seconds,
-            stream=True,
+            url, headers=headers, timeout=timeout_seconds, stream=True
         )
         response.raise_for_status()
         response.close()
         elapsed = (time.perf_counter() - t0) * 1000.0
         if i == 0 and n_samples > 1:
-            # First sample is the warm-up: skip it only if we have more samples
             continue
         samples.append(elapsed)
-    samples.sort()
-    # Return median of collected samples
-    mid = len(samples) // 2
-    return samples[mid] if samples else 9999.0
+    return sum(samples) / len(samples) if samples else 9999.0
 
 
 def get_all_latencies(
@@ -99,21 +79,20 @@ def get_all_latencies(
     timeout_seconds: float = 1.0,
 ) -> dict[str, float]:
     node_names = nodes or tuple(
-        name.strip()
-        for name in os.environ.get("DELIVERY_NODE_NAMES", "").split(",")
-        if name.strip()
+        (
+            name.strip()
+            for name in os.environ.get("DELIVERY_NODE_NAMES", "").split(",")
+            if name.strip()
+        )
     )
     if not node_names:
         node_names = DEFAULT_NODE_NAMES
     path = probe_path or os.environ.get("REAL_LATENCY_PROBE_PATH", DEFAULT_PROBE_PATH)
-
     latencies = {}
     for node_name in node_names:
         try:
             latencies[node_name] = measure_latency_ms(
-                node_name=node_name,
-                probe_path=path,
-                timeout_seconds=timeout_seconds,
+                node_name=node_name, probe_path=path, timeout_seconds=timeout_seconds
             )
         except Exception:
             latencies[node_name] = 9999.0

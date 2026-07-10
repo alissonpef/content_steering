@@ -24,8 +24,6 @@ class NetworkEmulatorDaemon:
         self.interval = interval
         self.running = False
         self._task = None
-        # Cache of last applied delay per pod to avoid unnecessary tc calls.
-        # Key: pod_name, Value: delay_ms (int)
         self._applied_delays: dict[str, int] = {}
 
     def start(self):
@@ -52,10 +50,8 @@ class NetworkEmulatorDaemon:
     async def _update_network_delays(self):
         if not last_client_coords.get("lat") or not self.monitor:
             return
-
         if not hasattr(self.monitor, "v1") or not self.monitor.v1:
             return
-
         try:
             pods = await asyncio.to_thread(
                 self.monitor.v1.list_namespaced_pod,
@@ -65,9 +61,7 @@ class NetworkEmulatorDaemon:
         except Exception as e:
             emulator_logger.error(f"Failed to list pods: {e}")
             return
-
         node_coords = self.monitor.get_node_coordinates()
-
         tasks = []
         for pod in getattr(pods, "items", []):
             if pod.status.phase != "Running":
@@ -77,44 +71,32 @@ class NetworkEmulatorDaemon:
             coords = node_coords.get(logical_name, {})
             if not coords:
                 continue
-
             distance_km = calculate_haversine_distance(
                 last_client_coords["lat"],
                 last_client_coords["lon"],
                 coords.get("lat"),
                 coords.get("lon"),
             )
-
-            propagation_ms = (distance_km / 200_000.0) * 1000.0 * 2.0
+            propagation_ms = distance_km / 200000.0 * 1000.0 * 2.0
             total_delay = 5.0 + propagation_ms
-
             is_spam = logical_name in active_spam_targets
             if is_spam:
                 total_delay += 150.0
-
             delay_ms = max(5, int(total_delay))
-
-            # Only issue `tc qdisc replace` when the target delay actually changed.
-            # Issuing it every second (even with the same value) momentarily
-            # disrupts the netem queue and causes latency measurement spikes.
             prev_delay = self._applied_delays.get(pod_name)
             if prev_delay == delay_ms:
-                continue  # Nothing to do for this pod
-
+                continue
             self._applied_delays[pod_name] = delay_ms
             emulator_logger.info(
-                f"Updating tc delay: {logical_name} ({pod_name}) "
-                f"{prev_delay}ms -> {delay_ms}ms (spam={is_spam})"
+                f"Updating tc delay: {logical_name} ({pod_name}) {prev_delay}ms -> {delay_ms}ms (spam={is_spam})"
             )
             tasks.append(self._apply_tc_delay(pod_name, delay_ms, is_spam=is_spam))
-
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _apply_tc_delay(
         self, pod_name: str, delay_ms: int, is_spam: bool = False
     ):
-        """Apply tc/netem delay to a single pod container (non-blocking)."""
         if is_spam:
             tc_args = [
                 "delay",
@@ -127,7 +109,6 @@ class NetworkEmulatorDaemon:
             ]
         else:
             tc_args = ["delay", f"{delay_ms}ms", "1ms", "distribution", "normal"]
-
         cmd = [
             "kubectl",
             "exec",
@@ -145,9 +126,7 @@ class NetworkEmulatorDaemon:
         ] + tc_args
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                *cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             await proc.wait()
         except Exception as e:

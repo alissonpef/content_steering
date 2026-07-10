@@ -102,12 +102,12 @@ class KubernetesMonitor:
             if env_var.name == "LATITUDE":
                 try:
                     lat = float(env_var.value)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
             elif env_var.name == "LONGITUDE":
                 try:
                     lon = float(env_var.value)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
         return lat, lon
 

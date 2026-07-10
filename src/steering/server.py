@@ -51,64 +51,78 @@ AVAILABLE_STRATEGIES = [
 ]
 
 _MAX_CONTEXT_CACHE = 200
-_STALL_PENALTY_FACTOR = 100.0
+_STALL_PENALTY_FACTOR = 5.0
 
 
 def _create_strategy_instance(strategy_name: str, monitor_ref):
     cfg = CONFIG.get("strategies", {}).get(strategy_name, {})
     constructors = {
         "epsilon_greedy": lambda: EpsilonGreedy(
-            epsilon=cfg.get("epsilon", 0.2), counts={}, values={}, gamma=cfg.get("gamma", 0.95), monitor=monitor_ref
+            epsilon=cfg.get("epsilon", 0.15),
+            counts={},
+            values={},
+            gamma=cfg.get("gamma", 0.90),
+            reward_scale=cfg.get("reward_scale", 200.0),
+            monitor=monitor_ref,
         ),
-        "ucb1": lambda: UCB1Selector(c=cfg.get("c", 1.0), gamma=cfg.get("gamma", 0.95), monitor=monitor_ref),
+        "ucb1": lambda: UCB1Selector(
+            c=cfg.get("c", 1.0),
+            gamma=cfg.get("gamma", 0.90),
+            reward_scale=cfg.get("reward_scale", 200.0),
+            monitor=monitor_ref,
+        ),
         "linucb": lambda: LinUCBSelector(
-            d=cfg.get("d", 14), alpha=cfg.get("alpha", 0.5), gamma=cfg.get("gamma", 0.95), monitor=monitor_ref
+            d=cfg.get("d", 14),
+            alpha=cfg.get("alpha", 0.5),
+            gamma=cfg.get("gamma", 0.995),
+            reward_scale=cfg.get("reward_scale", 100.0),
+            monitor=monitor_ref,
         ),
         "thompson_sampling": lambda: ThompsonSamplingSelector(
             d=cfg.get("d", 14),
-            alpha=cfg.get("alpha", 0.8),
-            gamma=cfg.get("gamma", 0.95),
-            reward_scale=cfg.get("reward_scale", 10.0),
+            alpha=cfg.get("alpha", 1.0),
+            gamma=cfg.get("gamma", 0.99),
+            reward_scale=cfg.get("reward_scale", 200.0),
             prior_precision=cfg.get("prior_precision", 1.0),
-            learning_rate=cfg.get("learning_rate", 0.75),
+            learning_rate=cfg.get("learning_rate", 0.50),
             update_steps=cfg.get("update_steps", 1),
             min_precision=cfg.get("min_precision", 1e-3),
             random_state=cfg.get("random_state"),
             monitor=monitor_ref,
         ),
         "ppo_hybrid": lambda: PPOHybridSelector(
-            hidden_dim=cfg.get("hidden_dim", 64),
-            learning_rate=cfg.get("learning_rate", 3e-4),
-            gamma=cfg.get("gamma", 0.99),
+            hidden_dim=cfg.get("hidden_dim", 32),
+            learning_rate=cfg.get("learning_rate", 1e-3),
+            gamma=cfg.get("gamma", 0.95),
             clip_ratio=cfg.get("clip_ratio", 0.2),
-            entropy_coef=cfg.get("entropy_coef", 0.01),
+            entropy_coef=cfg.get("entropy_coef", 0.05),
             value_coef=cfg.get("value_coef", 0.5),
-            batch_size=cfg.get("batch_size", 32),
+            batch_size=cfg.get("batch_size", 16),
             update_epochs=cfg.get("update_epochs", 4),
-            reward_scale=cfg.get("reward_scale", 10.0),
+            reward_scale=cfg.get("reward_scale", 200.0),
             min_std=cfg.get("min_std", 0.1),
             max_std=cfg.get("max_std", 1.5),
-            max_grad_norm=cfg.get("max_grad_norm", 1.0),
+            max_grad_norm=cfg.get("max_grad_norm", 0.5),
             random_state=cfg.get("random_state"),
             quality_levels=cfg.get("quality_levels"),
             policy_path=cfg.get("policy_path"),
             monitor=monitor_ref,
         ),
         "sac_hybrid": lambda: SACHybridSelector(
-            hidden_dim=cfg.get("hidden_dim", 64),
-            critic_hidden_dim=cfg.get("critic_hidden_dim", 64),
-            actor_learning_rate=cfg.get("actor_learning_rate", 3e-4),
-            critic_learning_rate=cfg.get("critic_learning_rate", 3e-4),
-            gamma=cfg.get("gamma", 0.99),
+            hidden_dim=cfg.get("hidden_dim", 32),
+            critic_hidden_dim=cfg.get("critic_hidden_dim", 32),
+            actor_learning_rate=cfg.get("actor_learning_rate", 1e-3),
+            critic_learning_rate=cfg.get("critic_learning_rate", 1e-3),
+            gamma=cfg.get("gamma", 0.95),
             tau=cfg.get("tau", 0.02),
-            entropy_coef=cfg.get("entropy_coef", 0.2),
-            batch_size=cfg.get("batch_size", 32),
-            replay_size=cfg.get("replay_size", 4096),
-            update_steps=cfg.get("update_steps", 2),
-            reward_scale=cfg.get("reward_scale", 10.0),
+            entropy_coef=cfg.get("entropy_coef", 0.1),
+            batch_size=cfg.get("batch_size", 16),
+            replay_size=cfg.get("replay_size", 512),
+            update_steps=cfg.get("update_steps", 1),
+            reward_scale=cfg.get("reward_scale", 200.0),
             min_std=cfg.get("min_std", 0.1),
             max_std=cfg.get("max_std", 1.5),
-            max_grad_norm=cfg.get("max_grad_norm", 1.0),
+            max_grad_norm=cfg.get("max_grad_norm", 0.5),
             random_state=cfg.get("random_state"),
             quality_levels=cfg.get("quality_levels"),
             policy_path=cfg.get("policy_path"),
@@ -481,13 +495,6 @@ class SteeringServer:
         return name
 
     def _resolve_arm_name_for_selector(self, raw_name: str) -> str:
-        """Return the arm name exactly as it is stored in the selector's self.nodes.
-
-        The client may report a server as 'node1' while the monitor registers it as
-        'delivery-node-1' (or vice-versa).  This method resolves the ambiguity by
-        checking the selector's own node list, trying both forms.  If the selector is
-        not yet initialised, it falls back to the raw name so callers can still log.
-        """
         if not raw_name:
             return raw_name
         selector = self.selector_instance
@@ -505,7 +512,7 @@ class SteeringServer:
     def _coerce_latency_ms(latency_value):
         try:
             latency = float(latency_value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if not np.isfinite(latency) or latency <= 0:
             return None
@@ -519,7 +526,7 @@ class SteeringServer:
 
         prev_latency = self.last_real_latencies.get(normalized_name)
         if prev_latency is not None:
-            smoothed = 0.15 * latency + 0.85 * prev_latency
+            smoothed = 0.3 * latency + 0.7 * prev_latency
         else:
             smoothed = latency
 
@@ -623,7 +630,14 @@ class SteeringServer:
         if not hasattr(self.selector_instance, "update"):
             return JSONResponse({"message": "Data logged"}, status_code=200)
 
-        feedback_value = float(feedback_latency)
+        oracle_latencies = await self._probe_real_latencies()
+        oracle_val = oracle_latencies.get(
+            normalized_latency_name
+        ) or oracle_latencies.get(srv_name)
+        if oracle_val and oracle_val < 9999.0:
+            feedback_value = float(oracle_val)
+        else:
+            feedback_value = float(feedback_latency)
         effective_latency = feedback_value + float(stall_time) * _STALL_PENALTY_FACTOR
 
         if isinstance(
@@ -646,7 +660,7 @@ class SteeringServer:
             ),
         ):
             feedback_value = (
-                100.0 / effective_latency if effective_latency > 0 else 0.0
+                10000.0 / effective_latency if effective_latency > 0 else 0.0
             )
 
         async with self._steering_lock:
@@ -689,7 +703,7 @@ class SteeringServer:
             if isinstance(
                 self.selector_instance, (PPOHybridSelector, SACHybridSelector)
             ):
-                update_kwargs["done"] = False
+                update_kwargs["done"] = True
             self.selector_instance.update(
                 selector_arm_name, feedback_value, **update_kwargs
             )

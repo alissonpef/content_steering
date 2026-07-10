@@ -4,10 +4,11 @@ from .base import Selector, selector_logger
 
 
 class UCB1Selector(Selector):
-    def __init__(self, c=2.0, gamma=0.99, monitor=None):
+    def __init__(self, c=2.0, gamma=0.99, reward_scale=10000.0, monitor=None):
         super().__init__(monitor=monitor)
         self.c = c
         self.gamma = gamma
+        self.reward_scale = max(1e-06, reward_scale)
         self.counts = {}
         self.values = {}
         self.total_pulls = 0.0
@@ -22,7 +23,7 @@ class UCB1Selector(Selector):
     def select_arm(self, **kwargs) -> list[str]:
         if self.monitor:
             nodes = [name for name, _ in self.monitor.get_nodes() if name]
-            if not nodes and not self.nodes:
+            if not nodes and (not self.nodes):
                 return []
             if set(nodes) != set(self.nodes):
                 self.initialize(nodes)
@@ -40,11 +41,10 @@ class UCB1Selector(Selector):
             self.total_pulls if self.total_pulls > 0 else sum(self.counts.values())
         )
         log_total_pulls = math.log(max(1, current_total_pulls_for_log))
-        scale = max(1.0, max(self.values.values()) if self.values else 1.0)
         for arm in self.nodes:
-            count = max(1e-5, self.counts.get(arm, 1e-5))
+            count = max(1e-05, self.counts.get(arm, 1e-05))
             avg_reward = self.values.get(arm, 0.0)
-            exploration_bonus = scale * math.sqrt((self.c * log_total_pulls) / count)
+            exploration_bonus = math.sqrt(self.c * log_total_pulls / count)
             ucb_scores[arm] = avg_reward + exploration_bonus
         return sorted(ucb_scores, key=lambda k: float(ucb_scores[k]), reverse=True)
 
@@ -66,17 +66,15 @@ class UCB1Selector(Selector):
                 )
                 return
         if str_arm not in self.counts:
-            self.counts[str_arm] = 0.0
+            self.counts[str_arm] = 0
         if str_arm not in self.values:
             self.values[str_arm] = 0.0
-            
-        for arm in self.nodes:
-            if arm in self.counts:
-                self.counts[arm] *= self.gamma
-                
-        old_count_decayed = self.counts[str_arm]
-        self.counts[str_arm] += 1.0
-        n = self.counts[str_arm]
-        previous_value = self.values.get(str_arm, 0.0)
-        self.values[str_arm] = (old_count_decayed * previous_value + feedback_value) / n
-        self.total_pulls = self.total_pulls * self.gamma + 1.0
+        if self.counts[str_arm] == 0:
+            self.values[str_arm] = feedback_value / self.reward_scale
+        else:
+            alpha = 1.0 - self.gamma
+            previous_value = self.values[str_arm]
+            normalized = feedback_value / self.reward_scale
+            self.values[str_arm] = (1.0 - alpha) * previous_value + alpha * normalized
+        self.counts[str_arm] += 1
+        self.total_pulls += 1

@@ -1,7 +1,5 @@
 import math
-
 import numpy as np
-
 from .base import Selector, selector_logger
 
 
@@ -12,22 +10,23 @@ class ThompsonSamplingSelector(Selector):
         alpha: float = 0.8,
         reward_scale: float = 10.0,
         prior_precision: float = 1.0,
-        learning_rate: float = 0.75,
+        learning_rate: float = 0.15,
         update_steps: int = 1,
-        min_precision: float = 1e-3,
+        min_precision: float = 0.001,
+        gamma: float = 0.995,
         random_state: int | None = None,
         monitor=None,
-        **kwargs_init
+        **kwargs_init,
     ):
         super().__init__(monitor=monitor)
         self.context_dim = max(1, d)
         self.alpha = alpha
-        self.gamma = kwargs_init.get("gamma", 1.0)
-        self.reward_scale = max(1e-6, reward_scale)
+        self.gamma = gamma
+        self.reward_scale = max(1e-06, reward_scale)
         self.prior_precision = max(min_precision, prior_precision)
         self.learning_rate = learning_rate
         self.update_steps = max(1, update_steps)
-        self.min_precision = max(1e-6, min_precision)
+        self.min_precision = max(1e-06, min_precision)
         self.rng = np.random.default_rng(random_state)
         self.counts: dict = {}
         self.values: dict = {}
@@ -63,8 +62,7 @@ class ThompsonSamplingSelector(Selector):
         if context_vector.size < self.context_dim:
             return np.pad(context_vector, (0, self.context_dim - context_vector.size))
         selector_logger.warning(
-            f"[ThompsonSampling] Context dimension {context_vector.size} "
-            f"truncated to {self.context_dim}."
+            f"[ThompsonSampling] Context dimension {context_vector.size} truncated to {self.context_dim}."
         )
         return context_vector[: self.context_dim]
 
@@ -75,8 +73,8 @@ class ThompsonSamplingSelector(Selector):
 
     def _reward_to_target(self, reward: float) -> float:
         reward_value = max(0.0, reward)
-        scale = max(self.reward_scale, self.max_reward_observed)
-        return 1.0 - math.exp(-reward_value / scale)
+        scale = max(self.reward_scale, self.max_reward_observed, 1.0)
+        return min(1.0, reward_value / scale)
 
     def select_arm(self, **kwargs) -> list[str]:
         contexts = kwargs.get("contexts")
@@ -85,13 +83,10 @@ class ThompsonSamplingSelector(Selector):
                 "[ThompsonSampling] 'contexts' not provided for select_arm."
             )
             return []
-
         if set(contexts.keys()) != set(self.nodes):
             self.initialize(list(contexts.keys()))
-
         if not self.nodes:
             return []
-
         unvisited_arms = [arm for arm in self.nodes if self.counts.get(arm, 0) == 0]
         if unvisited_arms:
             randomized_unvisited = list(self.rng.permutation(unvisited_arms))
@@ -99,7 +94,6 @@ class ThompsonSamplingSelector(Selector):
             if remaining_arms:
                 remaining_arms = list(self.rng.permutation(remaining_arms))
             return randomized_unvisited + remaining_arms
-
         sampled_scores = {}
         for arm in self.nodes:
             context_vector = self._prepare_context(contexts.get(arm))
@@ -111,7 +105,6 @@ class ThompsonSamplingSelector(Selector):
                 loc=mean, scale=np.sqrt(self.alpha / precision)
             )
             sampled_scores[arm] = self._sigmoid(float(sampled_weights @ context_vector))
-
         if not sampled_scores:
             return []
         return sorted(
@@ -125,7 +118,6 @@ class ThompsonSamplingSelector(Selector):
                 f"[ThompsonSampling] 'context' not provided for update of arm {chosen_arm_name}."
             )
             return
-
         if chosen_arm_name not in self.nodes:
             if self.monitor:
                 nodes = [name for name, _ in self.monitor.get_nodes() if name]
@@ -141,18 +133,15 @@ class ThompsonSamplingSelector(Selector):
                     f"[ThompsonSampling] Update: Arm {chosen_arm_name} not in self.nodes (no monitor). Ignoring."
                 )
                 return
-
         context_vector = self._prepare_context(context)
         if context_vector is None:
             return
-
         reward_value = max(0.0, feedback_value)
         self.max_reward_observed = max(self.max_reward_observed, reward_value)
         target = self._reward_to_target(reward_value)
         x_sq = np.square(context_vector)
         updated_mean = self._means[chosen_arm_name].copy()
         updated_precision = self._precisions[chosen_arm_name].copy()
-
         for _ in range(self.update_steps):
             prediction = self._sigmoid(float(updated_mean @ context_vector))
             curvature = prediction * (1.0 - prediction)
@@ -161,10 +150,11 @@ class ThompsonSamplingSelector(Selector):
             )
             updated_mean = (
                 updated_mean
-                - (self.learning_rate * (prediction - target) * context_vector)
+                - self.learning_rate
+                * (prediction - target)
+                * context_vector
                 / updated_precision
             )
-
         self._means[chosen_arm_name] = updated_mean
         self._precisions[chosen_arm_name] = updated_precision
         self.counts[chosen_arm_name] = self.counts.get(chosen_arm_name, 0) + 1
@@ -172,7 +162,7 @@ class ThompsonSamplingSelector(Selector):
         count = self.counts[chosen_arm_name]
         previous_value = self.values.get(chosen_arm_name, 0.0)
         self.values[chosen_arm_name] = (
-            ((count - 1) * previous_value) + reward_value
+            (count - 1) * previous_value + reward_value
         ) / count
 
     @property
