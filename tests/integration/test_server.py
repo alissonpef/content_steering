@@ -46,11 +46,9 @@ def test_strategies_list(client):
 
 def test_steering_decision(client, steering_server):
     client.post("/reset_simulation", json={"strategy": "random"})
-
     response = client.get("/node1/manifest.mpd?_DASH_pathway=true")
     assert response.status_code == 200
     data = response.json()
-
     assert "MEASURED-LATENCIES-MS" in data
     assert "DECISION-ID" in data
 

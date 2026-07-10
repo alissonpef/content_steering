@@ -28,31 +28,24 @@ def setup_server(mock_monitor):
 
 @pytest.mark.asyncio
 async def test_concurrent_steering_requests():
-    """Test that the server can handle 100 concurrent steering requests without corrupting state or deadlocking."""
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=fastapi_app), base_url="http://test"
     ) as ac:
         await ac.post("/reset_simulation", json={"strategy": "ucb1"})
-
         tasks = []
         for i in range(100):
             tasks.append(ac.get(f"/node1/manifest.mpd?_DASH_pathway=true&req_id={i}"))
-
         responses = await asyncio.gather(*tasks)
-
-        assert all(r.status_code == 200 for r in responses)
-
-        assert all("DECISION-ID" in r.json() for r in responses)
+        assert all((r.status_code == 200 for r in responses))
+        assert all(("DECISION-ID" in r.json() for r in responses))
 
 
 @pytest.mark.asyncio
 async def test_concurrent_coords_updates():
-    """Test that concurrent POST /coords (which acquire RL lock) don't crash."""
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=fastapi_app), base_url="http://test"
     ) as ac:
         await ac.post("/reset_simulation", json={"strategy": "ucb1"})
-
         payload = {
             "time": 10.0,
             "lat": -23.0,
@@ -63,10 +56,8 @@ async def test_concurrent_coords_updates():
             "stall_time": 0,
             "spam_target": "none",
         }
-
         tasks = []
         for _ in range(50):
             tasks.append(ac.post("/coords", json=payload))
-
         responses = await asyncio.gather(*tasks)
-        assert all(r.status_code == 200 for r in responses)
+        assert all((r.status_code == 200 for r in responses))
