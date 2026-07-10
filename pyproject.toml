@@ -68,3 +68,6 @@ dependencies = [
 
 [tool.pyright]
 extraPaths = ["analysis", "analysis/plotting", "src"]
+
+[dependency-groups]
+dev = []

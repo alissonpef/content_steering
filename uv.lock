@@ -325,6 +325,9 @@ requires-dist = [
     { name = "yarl", specifier = "==1.24.2" },
 ]
 
+[package.metadata.requires-dev]
+dev = []
+
 [[package]]
 name = "contourpy"
 version = "1.3.3"

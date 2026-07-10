@@ -67,20 +67,7 @@ spec:
           requests:
             cpu: "100m"
             memory: "256Mi"
-        # readinessProbe:
-        #   httpGet:
-        #     path: /health
-        #     port: 30500
-        #     scheme: HTTPS
-        #   initialDelaySeconds: 5
-        #   periodSeconds: 5
-        # livenessProbe:
-        #   httpGet:
-        #     path: /health
-        #     port: 30500
-        #     scheme: HTTPS
-        #   initialDelaySeconds: 10
-        #   periodSeconds: 10
+
         volumeMounts:
         - name: certs
           mountPath: /app/certs/steering-service
@@ -105,6 +92,18 @@ spec:
         - name: code-vol
           mountPath: /app/src/steering/strategies/epsilon_greedy.py
           subPath: epsilon_greedy.py
+        - name: code-vol
+          mountPath: /app/src/steering/real_latency.py
+          subPath: real_latency.py
+        - name: code-vol
+          mountPath: /app/src/steering/context.py
+          subPath: context.py
+        - name: code-vol
+          mountPath: /app/src/steering/strategies/lin_ucb.py
+          subPath: lin_ucb.py
+        - name: code-vol
+          mountPath: /app/config/strategies.json
+          subPath: strategies.json
       volumes:
       - name: certs
         secret:

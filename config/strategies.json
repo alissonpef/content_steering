@@ -1,64 +1,72 @@
 {
   "strategies": {
     "epsilon_greedy": {
-      "epsilon": 0.3
+      "epsilon": 0.15,
+      "gamma": 0.90,
+      "reward_scale": 200.0,
+      "comment": "Epsilon-greedy with EWMA. reward_scale=200 puts values in [0.25,1.0] range. gamma=0.90 (alpha=0.10) detects DDoS/mobility changes in ~8 steps (~10s). epsilon=0.15 balances exploration vs exploitation in 151-step simulations."
     },
     "ucb1": {
-      "c": 0.5,
-      "comment": "UCB1 exploration constant. c=0.5 balances exploration and exploitation for short simulations (~120-180s with ~4s segments = ~30-45 pulls). Theoretical guarantee: O(sqrt(K*T*log(T))) regret bound holds for any c>0."
+      "c": 1.0,
+      "gamma": 0.90,
+      "reward_scale": 200.0,
+      "comment": "UCB1 with EWMA. reward_scale=200 (=10000/50ms) puts values in [0.25,1.0]: bonus(0.32)<diff(0.75) after warmup so algorithm exploits correctly. gamma=0.90 gives alpha=0.10 for fast DDoS/mobility detection (~8 steps)."
     },
     "linucb": {
       "d": 14,
-      "alpha": 0.3,
-      "comment": "LinUCB (Li et al. 2010) with arm-indicator features. d=14 env context dim; d_total = n_arms + d. alpha=0.3 tightens the confidence ellipsoid so the algorithm exploits the learned theta after initial exploration. Typical values in literature: 0.2-0.5 for normalised contexts."
+      "alpha": 1.0,
+      "gamma": 0.99,
+      "reward_scale": 100.0,
+      "comment": "LinUCB (Li et al. 2010) with arm-indicator features. reward_scale=100 normalizes feedback to ~[0.5,2.0] compatible with identity A. alpha=1.0 (standard UCB1 paper value) gives wider confidence interval for proper exploration. gamma=0.99 balances stability with non-stationary adaptation."
     },
     "thompson_sampling": {
       "d": 14,
-      "alpha": 2.0,
-      "reward_scale": 1.0,
-      "prior_precision": 0.1,
-      "learning_rate": 0.95,
+      "alpha": 1.0,
+      "gamma": 0.99,
+      "reward_scale": 200.0,
+      "prior_precision": 1.0,
+      "learning_rate": 0.50,
       "update_steps": 1,
       "min_precision": 0.001,
-      "comment": "Contextual Thompson Sampling with online logistic updates and diagonal Laplace approximation."
+      "comment": "Contextual Thompson Sampling. lr=0.5 converges fast in 151-step simulations. prior_precision=1.0 gives informative prior to avoid initial oscillation. alpha=1.0 reduces blind exploration. gamma=0.99 detects DDoS/mobility in ~7 steps."
     },
     "ppo_hybrid": {
-      "hidden_dim": 64,
+      "hidden_dim": 32,
       "learning_rate": 0.001,
-      "gamma": 0.90,
+      "gamma": 0.95,
       "clip_ratio": 0.2,
       "entropy_coef": 0.05,
       "value_coef": 0.5,
       "batch_size": 16,
-      "update_epochs": 8,
-      "reward_scale": 1.0,
+      "update_epochs": 4,
+      "reward_scale": 200.0,
       "min_std": 0.1,
       "max_std": 1.5,
-      "max_grad_norm": 1.0,
+      "max_grad_norm": 0.5,
       "random_state": 7,
       "quality_levels": [0, 1, 2, 3, 4, 5],
       "policy_path": "steering-service/models/ppo_hybrid_policy.npz",
-      "comment": "Hybrid PPO selector for adaptive bitrate choice and steering order."
+      "comment": "Hybrid PPO. hidden_dim=32 gives ~1.5k params (right ratio for 151-step simulation vs 24k with dim=128). reward_scale=200 puts _last_reward_norm in [0.1,1.0] (full tanh range). batch_size=16 trains 2x more often. lr=0.001 for fast convergence."
     },
     "sac_hybrid": {
-      "hidden_dim": 64,
-      "critic_hidden_dim": 64,
+      "hidden_dim": 32,
+      "critic_hidden_dim": 32,
       "actor_learning_rate": 0.001,
       "critic_learning_rate": 0.001,
-      "gamma": 0.90,
-      "tau": 0.1,
-      "entropy_coef": 0.5,
+      "gamma": 0.95,
+      "tau": 0.02,
+      "entropy_coef": 0.1,
       "batch_size": 16,
       "replay_size": 512,
-      "update_steps": 2,
-      "reward_scale": 1.0,
+      "update_steps": 1,
+      "reward_scale": 200.0,
       "min_std": 0.1,
       "max_std": 1.5,
-      "max_grad_norm": 1.0,
+      "max_grad_norm": 0.5,
       "random_state": 13,
       "quality_levels": [0, 1, 2, 3, 4, 5],
       "policy_path": "steering-service/models/sac_hybrid_policy.npz",
-      "comment": "Hybrid SAC selector for adaptive bitrate choice and content steering."
+      "comment": "Hybrid SAC. hidden_dim=32 gives ~1.5k params for 151-step simulation. reward_scale=200 fixes _last_reward_norm saturation. tau=0.02 for faster target network adaptation. replay_size=512 starts training after 32 steps (valid for short simulations). lr=0.001 for fast convergence."
     },
     "random": {
       "comment": "Selects a random server at each step. Baseline for exploration-only behavior."
