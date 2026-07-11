@@ -5,45 +5,51 @@ experiment:
   timeout_grace_seconds: 30
   page_load_wait_ms: 3000
   completion_poll_interval_ms: 2000
+
 strategies:
-- epsilon_greedy
-- ucb1
-- linucb
-- thompson_sampling
-- ppo_hybrid
-- sac_hybrid
-- random
-- round_robin
-- best
+  - epsilon_greedy
+  - ucb1
+  - linucb
+  - thompson_sampling
+  - ppo_hybrid
+  - sac_hybrid
+  - random
+  - round_robin
+  - best
+
 scenarios:
   baseline:
-    description: "No interference \u2014 clean channel baseline."
+    description: "No interference — clean channel baseline."
     movement_target: none
     spam_target_1: none
     spam_target_2: none
+
   mobility:
-    description: Client moves toward delivery-node-2 between t=120s and t=180s.
+    description: "Client moves toward delivery-node-2 between t=120s and t=180s."
     movement_target: delivery-node-2
     movement_start_time: 120
     movement_duration: 60
     spam_target_1: none
     spam_target_2: none
+
   spam:
-    description: Cache flooding attack on delivery-node-1 between t=120s and t=180s.
+    description: "Cache flooding attack on delivery-node-1 between t=120s and t=180s."
     movement_target: none
     spam_target_1: delivery-node-1
     spam_start_time_1: 120
     spam_duration_1: 60
     spam_target_2: none
+
 infra:
-  client_url: http://127.0.0.1:5000
+  client_url: "http://127.0.0.1:5000"
   kubernetes_namespace: default
-  kubernetes_label_selector: app=steering-server
-  pod_logs_remote_path: /app/data/logs/raw/
-  pod_logs_local_path: data/logs/raw
+  kubernetes_label_selector: "app=steering-server"
+  pod_logs_remote_path: "/app/data/logs/raw/"
+  pod_logs_local_path: "data/logs/raw"
+
 output:
-  logs_raw_dir: data/logs/raw
-  logs_aggregated_dir: data/logs/aggregated
-  results_dir: data/results
-  experiments_results_dir: data/experiments_results
-  run_log_dir: data/run_logs
+  logs_raw_dir: "data/logs/raw"
+  logs_aggregated_dir: "data/logs/aggregated"
+  results_dir: "data/results"
+  experiments_results_dir: "data/experiments_results"
+  run_log_dir: "data/run_logs"
