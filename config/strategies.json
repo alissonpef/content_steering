@@ -48,26 +48,6 @@
       "policy_path": "steering-service/models/ppo_hybrid_policy.npz",
       "comment": "Hybrid PPO. hidden_dim=32 gives ~1.5k params (right ratio for 151-step simulation vs 24k with dim=128). reward_scale=200 puts _last_reward_norm in [0.1,1.0] (full tanh range). batch_size=16 trains 2x more often. lr=0.001 for fast convergence."
     },
-    "sac_hybrid": {
-      "hidden_dim": 32,
-      "critic_hidden_dim": 32,
-      "actor_learning_rate": 0.001,
-      "critic_learning_rate": 0.001,
-      "gamma": 0.95,
-      "tau": 0.02,
-      "entropy_coef": 0.1,
-      "batch_size": 16,
-      "replay_size": 512,
-      "update_steps": 1,
-      "reward_scale": 200.0,
-      "min_std": 0.1,
-      "max_std": 1.5,
-      "max_grad_norm": 0.5,
-      "random_state": 13,
-      "quality_levels": [0, 1, 2, 3, 4, 5],
-      "policy_path": "steering-service/models/sac_hybrid_policy.npz",
-      "comment": "Hybrid SAC. hidden_dim=32 gives ~1.5k params for 151-step simulation. reward_scale=200 fixes _last_reward_norm saturation. tau=0.02 for faster target network adaptation. replay_size=512 starts training after 32 steps (valid for short simulations). lr=0.001 for fast convergence."
-    },
     "random": {
       "comment": "Selects a random server at each step. Baseline for exploration-only behavior."
     },

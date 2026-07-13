@@ -37,16 +37,16 @@ SERVER_LABELS = {
 STRATEGY_STYLE = {
     "linucb": {
         "label": "LinUCB (contextual)",
-        "color": CB_MAGENTA,
+        "color": CB_RED,
         "linewidth": 1.6,
         "linestyle": "-",
-        "zorder": 5,
+        "zorder": 10,
         "marker": None,
-        "alpha": 0.85,
+        "alpha": 0.95,
     },
     "ucb1": {
         "label": "UCB1",
-        "color": CB_BLUE,
+        "color": CB_GREEN,
         "linewidth": 1.6,
         "linestyle": "-",
         "zorder": 5,
@@ -55,7 +55,7 @@ STRATEGY_STYLE = {
     },
     "epsilon_greedy": {
         "label": r"$\varepsilon$-Greedy",
-        "color": CB_GREEN,
+        "color": CB_CYAN,
         "linewidth": 1.6,
         "linestyle": "-",
         "zorder": 5,
@@ -65,34 +65,25 @@ STRATEGY_STYLE = {
     "random": {
         "label": "Random",
         "color": CB_GREY,
-        "linewidth": 1.4,
-        "linestyle": "--",
+        "linewidth": 2.2,
+        "linestyle": "-",
         "zorder": 3,
         "marker": None,
-        "alpha": 0.75,
+        "alpha": 0.70,
     },
     "round_robin": {
         "label": "Round Robin",
         "color": "#8b4513",
-        "linewidth": 1.4,
-        "linestyle": "-.",
+        "linewidth": 1.6,
+        "linestyle": "-",
         "zorder": 4,
         "marker": None,
-        "alpha": 0.8,
+        "alpha": 0.75,
     },
     "ppo_hybrid": {
         "label": "PPO Hybrid",
-        "color": CB_CYAN,
-        "linewidth": 1.8,
-        "linestyle": "-",
-        "zorder": 7,
-        "marker": None,
-        "alpha": 0.90,
-    },
-    "sac_hybrid": {
-        "label": "SAC Hybrid",
-        "color": CB_RED,
-        "linewidth": 1.8,
+        "color": CB_PURPLE,
+        "linewidth": 1.6,
         "linestyle": "-",
         "zorder": 7,
         "marker": None,
@@ -100,21 +91,21 @@ STRATEGY_STYLE = {
     },
     "best": {
         "label": "Perfect (Oracle)",
-        "color": CB_ORANGE,
-        "linewidth": 2.0,
-        "linestyle": "--",
+        "color": CB_BLACK,
+        "linewidth": 2.2,
+        "linestyle": "-",
         "zorder": 35,
         "marker": None,
-        "alpha": 0.95,
+        "alpha": 0.85,
     },
     "thompson_sampling": {
         "label": "Thompson Sampling",
-        "color": "#e377c2",
+        "color": CB_BLUE,
         "linewidth": 1.6,
         "linestyle": "-",
         "zorder": 6,
         "marker": None,
-        "alpha": 0.85,
+        "alpha": 0.90,
     },
     "no_steering": {
         "label": "No Steering",
@@ -138,7 +129,6 @@ STRATEGY_STYLE = {
 STRATEGY_LEGEND_ORDER = [
     "best",
     "ppo_hybrid",
-    "sac_hybrid",
     "linucb",
     "ucb1",
     "epsilon_greedy",
@@ -156,7 +146,6 @@ KNOWN_SERVER_KEYS_UNDERSCORE = [
 KNOWN_STRATEGY_KEYS = [
     "best",
     "ppo_hybrid",
-    "sac_hybrid",
     "epsilon_greedy",
     "no_steering",
     "linucb",
@@ -273,7 +262,7 @@ def format_axes(
         ax.grid(True, which="minor", alpha=0.2)
 
 
-def sort_legend_by_strategy(ax):
+def sort_legend_by_strategy(ax, **kwargs):
     handles, labels = ax.get_legend_handles_labels()
     if not handles:
         return
@@ -291,12 +280,10 @@ def sort_legend_by_strategy(ax):
     if paired:
         labels_s, handles_s = zip(*paired)
         legend = ax.get_legend()
-        legend_loc = getattr(legend, "_loc", "best") if legend else "best"
-        ax.legend(
-            handles_s,
-            labels_s,
-            loc=legend_loc,
-        )
+        if not kwargs:
+            legend_loc = getattr(legend, "_loc", "best") if legend else "best"
+            kwargs = {"loc": legend_loc}
+        ax.legend(handles_s, labels_s, **kwargs)
 
 
 SAVE_FORMATS = (".png", ".pdf", ".svg")

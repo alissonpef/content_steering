@@ -81,9 +81,6 @@ spec:
           mountPath: /app/src/steering/strategies/ppo.py
           subPath: ppo.py
         - name: code-vol
-          mountPath: /app/src/steering/strategies/sac.py
-          subPath: sac.py
-        - name: code-vol
           mountPath: /app/src/steering/strategies/ucb.py
           subPath: ucb.py
         - name: code-vol

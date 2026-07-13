@@ -24,7 +24,6 @@ from .strategies import (
     LinUCBSelector,
     ThompsonSamplingSelector,
     PPOHybridSelector,
-    SACHybridSelector,
     RandomSelector,
     BestSelector,
     RoundRobin,
@@ -44,7 +43,6 @@ AVAILABLE_STRATEGIES = [
     "linucb",
     "thompson_sampling",
     "ppo_hybrid",
-    "sac_hybrid",
     "random",
     "round_robin",
     "best",
@@ -99,26 +97,6 @@ def _create_strategy_instance(strategy_name: str, monitor_ref):
             value_coef=cfg.get("value_coef", 0.5),
             batch_size=cfg.get("batch_size", 16),
             update_epochs=cfg.get("update_epochs", 4),
-            reward_scale=cfg.get("reward_scale", 200.0),
-            min_std=cfg.get("min_std", 0.1),
-            max_std=cfg.get("max_std", 1.5),
-            max_grad_norm=cfg.get("max_grad_norm", 0.5),
-            random_state=cfg.get("random_state"),
-            quality_levels=cfg.get("quality_levels"),
-            policy_path=cfg.get("policy_path"),
-            monitor=monitor_ref,
-        ),
-        "sac_hybrid": lambda: SACHybridSelector(
-            hidden_dim=cfg.get("hidden_dim", 32),
-            critic_hidden_dim=cfg.get("critic_hidden_dim", 32),
-            actor_learning_rate=cfg.get("actor_learning_rate", 1e-3),
-            critic_learning_rate=cfg.get("critic_learning_rate", 1e-3),
-            gamma=cfg.get("gamma", 0.95),
-            tau=cfg.get("tau", 0.02),
-            entropy_coef=cfg.get("entropy_coef", 0.1),
-            batch_size=cfg.get("batch_size", 16),
-            replay_size=cfg.get("replay_size", 512),
-            update_steps=cfg.get("update_steps", 1),
             reward_scale=cfg.get("reward_scale", 200.0),
             min_std=cfg.get("min_std", 0.1),
             max_std=cfg.get("max_std", 1.5),
@@ -357,10 +335,6 @@ class SteeringServer:
                 snapshot["ppo_snapshot"] = self.selector_instance.policy_snapshot(
                     explore=False
                 )
-            elif isinstance(self.selector_instance, SACHybridSelector):
-                snapshot["sac_snapshot"] = self.selector_instance.policy_snapshot(
-                    explore=False
-                )
             return JSONResponse(
                 {
                     "latencies": oracle_latencies,
@@ -384,7 +358,6 @@ class SteeringServer:
                         LinUCBSelector,
                         ThompsonSamplingSelector,
                         PPOHybridSelector,
-                        SACHybridSelector,
                         BestSelector,
                     ),
                 ):
@@ -654,10 +627,7 @@ class SteeringServer:
             )
         elif isinstance(
             self.selector_instance,
-            (
-                PPOHybridSelector,
-                SACHybridSelector,
-            ),
+            (PPOHybridSelector,),
         ):
             feedback_value = (
                 10000.0 / effective_latency if effective_latency > 0 else 0.0
@@ -700,9 +670,7 @@ class SteeringServer:
                         self.last_real_latencies,
                     )
 
-            if isinstance(
-                self.selector_instance, (PPOHybridSelector, SACHybridSelector)
-            ):
+            if isinstance(self.selector_instance, (PPOHybridSelector,)):
                 update_kwargs["done"] = True
             self.selector_instance.update(
                 selector_arm_name, feedback_value, **update_kwargs

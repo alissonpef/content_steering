@@ -33,7 +33,6 @@ const STRATEGY_LABELS = {
   linucb: "LinUCB",
   thompson_sampling: "Thompson Sampling",
   ppo_hybrid: "PPO Hybrid",
-  sac_hybrid: "SAC Hybrid",
   random: "Random",
   best: "Best",
 };

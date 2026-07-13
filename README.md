@@ -67,7 +67,6 @@ Features:
   - `linucb` (contextual bandit)
   - `thompson_sampling` (contextual Thompson Sampling)
   - `ppo_hybrid` (hybrid PPO policy for bitrate + steering)
-  - `sac_hybrid` (hybrid SAC policy for bitrate + steering)
   - `round_robin` (round robin baseline)
   - `oracle_best_choice`, `random`, `no_steering`
 - Kubernetes-native architecture (using Kind) utilizing real cluster latencies.
@@ -118,7 +117,7 @@ Place the `dataset` folder at the project root, like this:
    ```sh
    git clone https://github.com/alissonpef/Content-Steering.git
    ```
-2. Start the environment (specify your desired strategy: `linucb`, `ucb1`, `epsilon_greedy`, `ppo_hybrid`, `sac_hybrid`, `thompson_sampling`, `round_robin`)
+2. Start the environment (specify your desired strategy: `linucb`, `ucb1`, `epsilon_greedy`, `ppo_hybrid`, `thompson_sampling`, `round_robin`)
    ```sh
    ./infra/scripts/setup_k8s.sh linucb
    ```

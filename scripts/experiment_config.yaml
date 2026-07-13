@@ -12,7 +12,6 @@ strategies:
   - linucb
   - thompson_sampling
   - ppo_hybrid
-  - sac_hybrid
   - random
   - round_robin
   - best

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from src.steering.strategies import PPOHybridSelector, SACHybridSelector
+from src.steering.strategies import PPOHybridSelector
 
 
 @pytest.fixture
@@ -70,19 +70,3 @@ def test_ppo_nan_inf_sanity(mock_monitor, nodes):
     )
     assert next_decision is not None
     assert len(next_decision) > 0
-
-
-def test_sac_determinism(mock_monitor, nodes):
-    selector_a = SACHybridSelector(monitor=mock_monitor, random_state=42)
-    selector_a.initialize(nodes)
-    selector_b = SACHybridSelector(monitor=mock_monitor, random_state=42)
-    selector_b.initialize(nodes)
-    contexts = get_dummy_contexts()
-    latencies = get_dummy_latencies()
-    decision_a = selector_a.select_arm(
-        contexts=contexts, latencies=latencies, decision_id="id1"
-    )
-    decision_b = selector_b.select_arm(
-        contexts=contexts, latencies=latencies, decision_id="id2"
-    )
-    assert decision_a == decision_b

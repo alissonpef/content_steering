@@ -4,7 +4,6 @@ from .ucb import UCB1Selector
 from .lin_ucb import LinUCBSelector
 from .thompson import ThompsonSamplingSelector
 from .ppo import PPOHybridSelector
-from .sac import SACHybridSelector
 from .random_selector import RandomSelector
 from .best_selector import BestSelector
 from .round_robin import RoundRobin
@@ -16,7 +15,6 @@ __all__ = [
     "LinUCBSelector",
     "ThompsonSamplingSelector",
     "PPOHybridSelector",
-    "SACHybridSelector",
     "RandomSelector",
     "BestSelector",
     "RoundRobin",
