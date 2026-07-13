@@ -97,11 +97,11 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     window = 10
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
     handles, labels = ([], [])
-    if "experienced_latency_ms" in df.columns:
-        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
+    if "experienced_latency_ms_ORACLE" in df.columns:
+        tmp = df.dropna(subset=["sim_time_client", "experienced_latency_ms_ORACLE"])
         if len(tmp) >= window:
             ma = (
-                tmp["experienced_latency_ms"]
+                tmp["experienced_latency_ms_ORACLE"]
                 .rolling(window, center=True, min_periods=1)
                 .mean()
             )
@@ -112,7 +112,7 @@ def generate_plots(csv_path: str, max_time: float | None = None):
                 lw=1.6,
             )
             handles.append(h)
-            labels.append(f"MA({window}s) — Chosen")
+            labels.append(f"MA({window}s) — Chosen (No Client Noise)")
     if "dynamic_best_server_latency" in df.columns:
         tmp = df.dropna(subset=["sim_time_client", "dynamic_best_server_latency"])
         if len(tmp) >= window:

@@ -91,22 +91,27 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     has_std = "experienced_latency_ms_std_agg" in df.columns
     fig, ax = plt.subplots(figsize=(7.0, 3.5))
     h, labels = ([], [])
-    if "experienced_latency_ms" in df.columns:
-        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms"])
+    if "experienced_latency_ms_ORACLE" in df.columns:
+        sub = df.dropna(subset=["sim_time_client", "experienced_latency_ms_ORACLE"])
         (line,) = ax.plot(
             sub["sim_time_client"].to_numpy(),
-            sub["experienced_latency_ms"].to_numpy(),
+            sub["experienced_latency_ms_ORACLE"].to_numpy(),
             color=CB_BLACK,
             lw=1.6,
         )
         h.append(line)
-        labels.append("Avg. Chosen Latency")
-        if has_std and "experienced_latency_ms_std_agg" in df.columns:
-            std = df.loc[sub.index, "experienced_latency_ms_std_agg"]
+        labels.append("Avg. Chosen Latency (No Client Noise)")
+        if has_std and "experienced_latency_ms_ORACLE_std_agg" in df.columns:
+            std = df.loc[sub.index, "experienced_latency_ms_ORACLE_std_agg"]
             _shade(
-                ax, sub["sim_time_client"], sub["experienced_latency_ms"], std, CB_BLACK
+                ax,
+                sub["sim_time_client"],
+                sub["experienced_latency_ms_ORACLE"],
+                std,
+                CB_BLACK,
             )
     oracle_col = _resolve_oracle_column(df)
+
     if oracle_col is not None:
         sub = df.dropna(subset=["sim_time_client", oracle_col])
         (line,) = ax.plot(

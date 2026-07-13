@@ -133,7 +133,7 @@ def plot_average_latency_comparison(
             ax,
             loc="upper center",
             bbox_to_anchor=(0.5, -0.16),
-            ncol=3,
+            ncol=4,
         )
         fig.tight_layout()
         scenario_output_dir = os.path.join(
