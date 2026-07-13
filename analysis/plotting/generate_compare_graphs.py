@@ -26,7 +26,7 @@ PROJECT_ROOT = os.path.abspath(
 )
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results")
-WINDOW_SIZE = 5
+WINDOW_SIZE = 25
 
 
 def _extract_scenario_from_filename(filename: str) -> str:
@@ -126,10 +126,15 @@ def plot_average_latency_comparison(
             title,
             "Simulation Time (s)",
             "Latency (ms)",
-            legend_loc="upper right",
+            legend_loc="best",
             xlim_max=max_time if max_time is not None else scenario_xmax,
         )
-        sort_legend_by_strategy(ax)
+        sort_legend_by_strategy(
+            ax,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.16),
+            ncol=3,
+        )
         fig.tight_layout()
         scenario_output_dir = os.path.join(
             output_dir, "comparative_analysis", scenario_key
@@ -258,10 +263,15 @@ def plot_cumulative_regret(
             f"Cumulative Regret ({scenario_key.title()})",
             "Simulation Time (s)",
             "Cumulative Regret (ms)",
-            legend_loc="upper left",
+            legend_loc="best",
             xlim_max=max_time if max_time is not None else scenario_xmax,
         )
-        sort_legend_by_strategy(ax)
+        sort_legend_by_strategy(
+            ax,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.16),
+            ncol=3,
+        )
         fig.tight_layout()
         scenario_output_dir = os.path.join(
             output_dir, "comparative_analysis", scenario_key
