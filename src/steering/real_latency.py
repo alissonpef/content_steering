@@ -76,11 +76,9 @@ def get_all_latencies(
     timeout_seconds: float = 1.0,
 ) -> dict[str, float]:
     node_names = nodes or tuple(
-        
-            name.strip()
-            for name in os.environ.get("DELIVERY_NODE_NAMES", "").split(",")
-            if name.strip()
-        
+        name.strip()
+        for name in os.environ.get("DELIVERY_NODE_NAMES", "").split(",")
+        if name.strip()
     )
     if not node_names:
         node_names = DEFAULT_NODE_NAMES

@@ -582,7 +582,16 @@ class SteeringServer:
             feedback_value = float(feedback_latency)
         effective_latency = feedback_value + float(stall_time) * _STALL_PENALTY_FACTOR
 
-        if isinstance(self.selector_instance, (UCB1Selector, LinUCBSelector, EpsilonGreedy, ThompsonSamplingSelector, PPOHybridSelector)):
+        if isinstance(
+            self.selector_instance,
+            (
+                UCB1Selector,
+                LinUCBSelector,
+                EpsilonGreedy,
+                ThompsonSamplingSelector,
+                PPOHybridSelector,
+            ),
+        ):
             feedback_value = 10000.0 / effective_latency if effective_latency > 0 else 0.0
 
         async with self._steering_lock:

@@ -206,12 +206,10 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             value_cols = sorted(
-                
-                    c
-                    for c in merged.columns
-                    if c.startswith("value_")
-                    and c.replace("value_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
-                
+                c
+                for c in merged.columns
+                if c.startswith("value_")
+                and c.replace("value_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
             )
             for col in value_cols:
                 sk = col.replace("value_", "").replace("_", "-")
@@ -251,12 +249,9 @@ def generate_plots(csv_path: str, max_time: float | None = None):
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             cnt_cols = sorted(
-                
-                    c
-                    for c in merged.columns
-                    if c.startswith("data_")
-                    and c.replace("data_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
-                
+                c
+                for c in merged.columns
+                if c.startswith("data_") and c.replace("data_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
             )
             for col in cnt_cols:
                 sk = col.replace("data_", "").replace("_", "-")
