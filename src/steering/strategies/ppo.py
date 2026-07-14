@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import json
 import math
 import os
 import typing
 from dataclasses import dataclass
+
 import numpy as np
+
 from .base import Selector, selector_logger
 
 
@@ -33,12 +36,7 @@ def _normal_log_prob(sample: np.ndarray, mean: np.ndarray, std: np.ndarray) -> f
     log_std = np.log(std)
     return float(
         np.sum(
-            -0.5
-            * (
-                np.square(sample - mean) / variance
-                + 2.0 * log_std
-                + math.log(2.0 * math.pi)
-            )
+            -0.5 * (np.square(sample - mean) / variance + 2.0 * log_std + math.log(2.0 * math.pi))
         )
     )
 
@@ -151,12 +149,8 @@ class PPOHybridSelector(Selector):
             ),
             "b_value": np.zeros(1, dtype=float),
         }
-        self._adam_m = {
-            name: np.zeros_like(value) for name, value in self._params.items()
-        }
-        self._adam_v = {
-            name: np.zeros_like(value) for name, value in self._params.items()
-        }
+        self._adam_m = {name: np.zeros_like(value) for name, value in self._params.items()}
+        self._adam_v = {name: np.zeros_like(value) for name, value in self._params.items()}
         self._adam_t = 0
 
     def _refresh_nodes(self):
@@ -175,8 +169,7 @@ class PPOHybridSelector(Selector):
             }
         else:
             contexts = {
-                arm: np.zeros(self._context_dim_for_nodes(), dtype=float)
-                for arm in self.nodes
+                arm: np.zeros(self._context_dim_for_nodes(), dtype=float) for arm in self.nodes
             }
             latencies = {arm: None for arm in self.nodes}
         return (contexts, latencies or {})
@@ -191,9 +184,7 @@ class PPOHybridSelector(Selector):
         pieces: list[float] = []
         total_pulls = max(1, self.total_pulls)
         for arm in self.nodes:
-            context = np.asarray(
-                contexts.get(arm, np.zeros(context_dim)), dtype=float
-            ).reshape(-1)
+            context = np.asarray(contexts.get(arm, np.zeros(context_dim)), dtype=float).reshape(-1)
             if context.size < context_dim:
                 context = np.pad(context, (0, context_dim - context.size))
             elif context.size > context_dim:
@@ -239,16 +230,12 @@ class PPOHybridSelector(Selector):
         self,
         abr_action: int,
         steering_action: np.ndarray,
-        forward: typing.Dict[str, typing.Any],
+        forward: dict[str, typing.Any],
     ) -> float:
         abr_probs = forward["abr_probs"]
-        abr_prob = (
-            float(abr_probs[abr_action]) if 0 <= abr_action < abr_probs.size else 1e-12
-        )
+        abr_prob = float(abr_probs[abr_action]) if 0 <= abr_action < abr_probs.size else 1e-12
         abr_prob = max(1e-12, abr_prob)
-        return math.log(abr_prob) + _normal_log_prob(
-            steering_action, forward["mu"], forward["std"]
-        )
+        return math.log(abr_prob) + _normal_log_prob(steering_action, forward["mu"], forward["std"])
 
     def _select_quality_index(self, abr_probs: np.ndarray, explore: bool) -> int:
         if explore:
@@ -261,26 +248,20 @@ class PPOHybridSelector(Selector):
         if not self.nodes:
             return []
         for arm in self.nodes:
-            contexts.setdefault(
-                arm, np.zeros(self._context_dim_for_nodes(), dtype=float)
-            )
+            contexts.setdefault(arm, np.zeros(self._context_dim_for_nodes(), dtype=float))
             latencies.setdefault(arm, None)
         state = self._build_state(contexts, latencies)
         forward = self._forward(state)
         explore = bool(kwargs.get("explore", True))
         abr_action = self._select_quality_index(forward["abr_probs"], explore=explore)
         if explore:
-            steering_action = forward["mu"] + forward["std"] * self.rng.normal(
-                size=len(self.nodes)
-            )
+            steering_action = forward["mu"] + forward["std"] * self.rng.normal(size=len(self.nodes))
         else:
             steering_action = forward["mu"].copy()
         steering_weights = _softmax(np.asarray(steering_action, dtype=float))
         ordered_indices = list(np.argsort(-steering_weights))
         ordered_nodes = [self.nodes[idx] for idx in ordered_indices]
-        logprob = self._logprob(
-            abr_action, np.asarray(steering_action, dtype=float), forward
-        )
+        logprob = self._logprob(abr_action, np.asarray(steering_action, dtype=float), forward)
         self._last_selected_index = ordered_indices[0]
         self._last_quality_index = abr_action
         self._last_action = {
@@ -304,9 +285,7 @@ class PPOHybridSelector(Selector):
         if decision_id:
             self._pending_transitions.setdefault(decision_id, []).append(transition)
         else:
-            self._pending_transitions.setdefault(ordered_nodes[0], []).append(
-                transition
-            )
+            self._pending_transitions.setdefault(ordered_nodes[0], []).append(transition)
         return ordered_nodes
 
     def _discounted_returns(self, rewards: np.ndarray, dones: np.ndarray) -> np.ndarray:
@@ -323,9 +302,7 @@ class PPOHybridSelector(Selector):
         return {name: np.zeros_like(value) for name, value in self._params.items()}
 
     def _clip_gradients(self, grads: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-        total_norm = math.sqrt(
-            sum((float(np.sum(np.square(grad))) for grad in grads.values()))
-        )
+        total_norm = math.sqrt(sum(float(np.sum(np.square(grad))) for grad in grads.values()))
         if total_norm <= self.max_grad_norm or total_norm == 0.0:
             return grads
         scale = self.max_grad_norm / total_norm
@@ -338,9 +315,7 @@ class PPOHybridSelector(Selector):
         eps = 1e-08
         for name, grad in grads.items():
             self._adam_m[name] = beta1 * self._adam_m[name] + (1.0 - beta1) * grad
-            self._adam_v[name] = beta2 * self._adam_v[name] + (1.0 - beta2) * np.square(
-                grad
-            )
+            self._adam_v[name] = beta2 * self._adam_v[name] + (1.0 - beta2) * np.square(grad)
             m_hat = self._adam_m[name] / (1.0 - beta1**self._adam_t)
             v_hat = self._adam_v[name] / (1.0 - beta2**self._adam_t)
             self._params[name] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + eps)
@@ -364,9 +339,7 @@ class PPOHybridSelector(Selector):
         diff = sample.steering_action - forward["mu"]
         std_sq = np.maximum(np.square(forward["std"]), self.min_std**2)
         mean_grad = policy_scale * (forward["mu"] - sample.steering_action) / std_sq
-        log_std_grad = (
-            policy_scale * (1.0 - np.square(diff) / std_sq) - self.entropy_coef
-        )
+        log_std_grad = policy_scale * (1.0 - np.square(diff) / std_sq) - self.entropy_coef
         value_grad = self.value_coef * (forward["value"] - ret)
         d_h = (
             self._params["W_abr"] @ abr_grad_logits
@@ -404,7 +377,7 @@ class PPOHybridSelector(Selector):
             advantages = advantages / adv_std
         for _ in range(self.update_epochs):
             grads = self._zero_grads()
-            for sample, adv, ret in zip(self._buffer, advantages, returns):
+            for sample, adv, ret in zip(self._buffer, advantages, returns, strict=False):
                 sample_grads = self._backprop_sample(sample, float(adv), float(ret))
                 for name in grads:
                     grads[name] += sample_grads[name]
@@ -429,9 +402,7 @@ class PPOHybridSelector(Selector):
             self.total_pulls += 1
             count = self.counts[chosen_arm_name]
             previous = self.values.get(chosen_arm_name, 0.0)
-            self.values[chosen_arm_name] = (
-                (count - 1) * previous + reward_value
-            ) / count
+            self.values[chosen_arm_name] = ((count - 1) * previous + reward_value) / count
         decision_id = kwargs.get("decision_id")
         if decision_id and decision_id in self._pending_transitions:
             pending_list = self._pending_transitions.pop(decision_id)
@@ -460,15 +431,10 @@ class PPOHybridSelector(Selector):
         contexts = (
             self._last_contexts
             if self._last_contexts
-            else {
-                arm: np.zeros(self._context_dim_for_nodes(), dtype=float)
-                for arm in self.nodes
-            }
+            else {arm: np.zeros(self._context_dim_for_nodes(), dtype=float) for arm in self.nodes}
         )
         latencies = (
-            self._last_latencies
-            if self._last_latencies
-            else {arm: None for arm in self.nodes}
+            self._last_latencies if self._last_latencies else {arm: None for arm in self.nodes}
         )
         state = self._build_state(contexts, latencies)
         forward = self._forward(state)
@@ -520,19 +486,13 @@ class PPOHybridSelector(Selector):
             return None
         data = np.load(target_path, allow_pickle=True)
         self._params = {name: data[name] for name in data.files if name != "metadata"}
-        self._adam_m = {
-            name: np.zeros_like(value) for name, value in self._params.items()
-        }
-        self._adam_v = {
-            name: np.zeros_like(value) for name, value in self._params.items()
-        }
+        self._adam_m = {name: np.zeros_like(value) for name, value in self._params.items()}
+        self._adam_v = {name: np.zeros_like(value) for name, value in self._params.items()}
         self._adam_t = 0
         if "metadata" in data.files:
             try:
                 metadata = json.loads(str(data["metadata"].item()))
-                self.quality_levels = metadata.get(
-                    "quality_levels", self.quality_levels
-                )
+                self.quality_levels = metadata.get("quality_levels", self.quality_levels)
                 self.hidden_dim = int(metadata.get("hidden_dim", self.hidden_dim))
                 self._input_dim = int(metadata.get("input_dim", self._input_dim))
             except Exception:

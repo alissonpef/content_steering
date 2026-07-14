@@ -1,6 +1,8 @@
 import math
 import random
+
 import numpy as np
+
 from .base import Selector, selector_logger
 
 
@@ -64,18 +66,14 @@ class LinUCBSelector(Selector):
         if set(contexts.keys()) != set(self.nodes):
             self.initialize(list(contexts.keys()))
         unvisited_arms = [
-            arm
-            for arm in self.nodes
-            if arm in contexts and self.pull_counts.get(arm, 0) == 0
+            arm for arm in self.nodes if arm in contexts and self.pull_counts.get(arm, 0) == 0
         ]
         if unvisited_arms:
             random.shuffle(unvisited_arms)
             chosen = unvisited_arms[0]
             other_arms = [a for a in self.nodes if a != chosen]
             random.shuffle(other_arms)
-            selector_logger.info(
-                f"[LinUCB] Exploring untested arm (randomized): {chosen}"
-            )
+            selector_logger.info(f"[LinUCB] Exploring untested arm (randomized): {chosen}")
             return [chosen] + other_arms
         ucb_scores: dict = {}
         for arm in self.nodes:
@@ -88,9 +86,7 @@ class LinUCBSelector(Selector):
                 theta_hat = np.linalg.solve(self.A, self.b)
                 v = np.linalg.solve(self.A, x)
             except np.linalg.LinAlgError:
-                selector_logger.warning(
-                    f"[LinUCB] Singular A; fallback for arm '{arm}'."
-                )
+                selector_logger.warning(f"[LinUCB] Singular A; fallback for arm '{arm}'.")
                 theta_hat = self.b.copy()
                 v = x.copy()
             predicted_reward = float((theta_hat.T @ x).item())
@@ -108,9 +104,7 @@ class LinUCBSelector(Selector):
             )
             return
         if chosen_arm_name not in self.nodes:
-            selector_logger.warning(
-                f"[LinUCB] Update: Arm '{chosen_arm_name}' unknown. Ignoring."
-            )
+            selector_logger.warning(f"[LinUCB] Update: Arm '{chosen_arm_name}' unknown. Ignoring.")
             return
         x = self._augmented_context(chosen_arm_name, context)
         if self.A is not None and self.b is not None:

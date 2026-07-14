@@ -1,4 +1,5 @@
-from typing import Dict, Any, List
+from typing import Any
+
 from .base import Selector
 
 
@@ -7,11 +8,9 @@ class RoundRobin(Selector):
         super().__init__(monitor=monitor)
         self.index = 0
 
-    def select_arm(self, **kwargs) -> List[str]:
+    def select_arm(self, **kwargs) -> list[str]:
         if self.monitor:
-            current_monitor_node_names = [
-                name for name, _ in self.monitor.get_nodes() if name
-            ]
+            current_monitor_node_names = [name for name, _ in self.monitor.get_nodes() if name]
             if not current_monitor_node_names and (not self.nodes):
                 return []
             if set(current_monitor_node_names) != set(self.nodes):
@@ -24,5 +23,5 @@ class RoundRobin(Selector):
         self.index += 1
         return ordered_nodes
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         return {"strategy": "round_robin", "current_index": self.index}

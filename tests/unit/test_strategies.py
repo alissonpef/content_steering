@@ -1,11 +1,13 @@
-import pytest
 import uuid
 from unittest.mock import MagicMock
+
+import pytest
+
 from src.steering.strategies import (
-    EpsilonGreedy,
-    UCB1Selector,
-    RandomSelector,
     BestSelector,
+    EpsilonGreedy,
+    RandomSelector,
+    UCB1Selector,
 )
 
 
@@ -44,7 +46,7 @@ def test_epsilon_greedy_initialization(mock_monitor, nodes):
     selector = EpsilonGreedy(epsilon=0.2, counts={}, values={}, monitor=mock_monitor)
     selector.initialize(nodes)
     assert set(selector.nodes) == set(nodes)
-    assert all((count == 0 for count in selector.counts.values()))
+    assert all(count == 0 for count in selector.counts.values())
 
 
 def test_epsilon_greedy_update(mock_monitor, nodes):
@@ -62,7 +64,7 @@ def test_ucb1_selector_initialization(mock_monitor, nodes):
     selector = UCB1Selector(c=1.0, monitor=mock_monitor)
     selector.initialize(nodes)
     assert set(selector.nodes) == set(nodes)
-    assert all((count == 0 for count in selector.counts.values()))
+    assert all(count == 0 for count in selector.counts.values())
 
 
 def test_ucb1_selector_update_and_select(mock_monitor, nodes):

@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from src.steering.strategies import PPOHybridSelector
 
 
@@ -40,12 +42,8 @@ def test_ppo_determinism(mock_monitor, nodes):
     selector_b.initialize(nodes)
     contexts = get_dummy_contexts()
     latencies = get_dummy_latencies()
-    decision_a = selector_a.select_arm(
-        contexts=contexts, latencies=latencies, decision_id="id1"
-    )
-    decision_b = selector_b.select_arm(
-        contexts=contexts, latencies=latencies, decision_id="id2"
-    )
+    decision_a = selector_a.select_arm(contexts=contexts, latencies=latencies, decision_id="id1")
+    decision_b = selector_b.select_arm(contexts=contexts, latencies=latencies, decision_id="id2")
     assert decision_a == decision_b
 
 
@@ -55,9 +53,7 @@ def test_ppo_nan_inf_sanity(mock_monitor, nodes):
     contexts = get_dummy_contexts()
     latencies = get_dummy_latencies()
     decision_id = "test-nan"
-    decision = selector.select_arm(
-        contexts=contexts, latencies=latencies, decision_id=decision_id
-    )
+    decision = selector.select_arm(contexts=contexts, latencies=latencies, decision_id=decision_id)
     selector.update(
         decision[0],
         feedback_value=-9999999999.0,

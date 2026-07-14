@@ -1,19 +1,18 @@
 import asyncio
-import subprocess
 import logging
+import subprocess
+
 from .context import (
-    last_client_coords,
     active_spam_targets,
     calculate_haversine_distance,
+    last_client_coords,
 )
 
 emulator_logger = logging.getLogger("NetworkEmulator")
 emulator_logger.setLevel(logging.INFO)
 if not emulator_logger.handlers:
     _handler = logging.StreamHandler()
-    _formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s: %(message)s"
-    )
+    _formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s: %(message)s")
     _handler.setFormatter(_formatter)
     emulator_logger.addHandler(_handler)
 
@@ -94,9 +93,7 @@ class NetworkEmulatorDaemon:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _apply_tc_delay(
-        self, pod_name: str, delay_ms: int, is_spam: bool = False
-    ):
+    async def _apply_tc_delay(self, pod_name: str, delay_ms: int, is_spam: bool = False):
         if is_spam:
             tc_args = [
                 "delay",

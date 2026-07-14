@@ -1,14 +1,12 @@
-import os
 import json
 import logging
+import os
 
-PROJECT_ROOT_DIR = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+PROJECT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_DIR = os.getenv("STEERING_LOG_DIR", "/app/logs/raw")
 CONFIG_PATH = os.path.join(PROJECT_ROOT_DIR, "config", "strategies.json")
 try:
-    with open(CONFIG_PATH, "r") as f:
+    with open(CONFIG_PATH) as f:
         CONFIG = json.load(f)
 except FileNotFoundError:
     CONFIG = {}

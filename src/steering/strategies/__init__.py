@@ -1,12 +1,12 @@
 from .base import Selector
+from .best_selector import BestSelector
 from .epsilon_greedy import EpsilonGreedy
-from .ucb import UCB1Selector
 from .lin_ucb import LinUCBSelector
-from .thompson import ThompsonSamplingSelector
 from .ppo import PPOHybridSelector
 from .random_selector import RandomSelector
-from .best_selector import BestSelector
 from .round_robin import RoundRobin
+from .thompson import ThompsonSamplingSelector
+from .ucb import UCB1Selector
 
 __all__ = [
     "Selector",

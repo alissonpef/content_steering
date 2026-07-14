@@ -1,40 +1,38 @@
-import time
-import os
-import json
 import argparse
 import asyncio
+import json
 import logging
-import numpy as np
+import os
+import time
 import uuid
-
 from contextlib import asynccontextmanager
 
-from .network_emulator import NetworkEmulatorDaemon
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
 import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from .config import CONFIG, LOG_DIR, STEERING_PORT, _configure_all_loggers, app_logger
+from .context import (
+    get_simple_context,
+    update_client_position,
+    update_spam_target,
+)
 from .dash_parser import DashParser
+from .logging_csv import get_unique_log_filename, log_data_to_csv, setup_csv_logging
 from .monitor import KubernetesMonitor
+from .network_emulator import NetworkEmulatorDaemon
 from .real_latency import get_all_latencies, warmup_nodes
 from .strategies import (
+    BestSelector,
     EpsilonGreedy,
-    UCB1Selector,
     LinUCBSelector,
-    ThompsonSamplingSelector,
     PPOHybridSelector,
     RandomSelector,
-    BestSelector,
     RoundRobin,
-)
-
-from .config import CONFIG, STEERING_PORT, LOG_DIR, app_logger, _configure_all_loggers
-from .logging_csv import setup_csv_logging, log_data_to_csv, get_unique_log_filename
-from .context import (
-    update_client_position,
-    get_simple_context,
-    update_spam_target,
+    ThompsonSamplingSelector,
+    UCB1Selector,
 )
 
 AVAILABLE_STRATEGIES = [
@@ -173,17 +171,11 @@ class SteeringServer:
                 if node_names:
                     self.selector_instance.initialize(node_names)
                     self.selector_initialized = True
-                    app_logger.debug(
-                        f"Selector initialized/updated with nodes: {node_names}"
-                    )
+                    app_logger.debug(f"Selector initialized/updated with nodes: {node_names}")
                     return True
-                app_logger.warning(
-                    "No node names from self.monitor to initialize selector."
-                )
+                app_logger.warning("No node names from self.monitor to initialize selector.")
             else:
-                app_logger.warning(
-                    "No node info from self.monitor to initialize selector."
-                )
+                app_logger.warning("No node info from self.monitor to initialize selector.")
             return False
         return True
 
@@ -225,10 +217,10 @@ class SteeringServer:
 
             try:
                 data = await request.json()
-            except Exception:
+            except Exception as e:
                 from fastapi import HTTPException
 
-                raise HTTPException(status_code=422, detail="Invalid JSON body")
+                raise HTTPException(status_code=422, detail="Invalid JSON body") from e
 
             requested_strategy = data.get("strategy")
             if requested_strategy and requested_strategy in AVAILABLE_STRATEGIES:
@@ -292,10 +284,10 @@ class SteeringServer:
         async def coords_update(request: Request):
             try:
                 data = await request.json()
-            except Exception:
+            except Exception as e:
                 from fastapi import HTTPException
 
-                raise HTTPException(status_code=422, detail="Invalid JSON body")
+                raise HTTPException(status_code=422, detail="Invalid JSON body") from e
             client_ip = request.client.host if request.client else "unknown"
             s_t, lat, lon, rt_c, srv_u_fb, d_id, stall_t, spam_tgt = (
                 data.get("time"),
@@ -327,14 +319,10 @@ class SteeringServer:
 
         @self.app.get("/sim_state")
         async def sim_state():
-            oracle_latencies = await self._get_real_latency_snapshot(
-                probe_if_empty=False
-            )
+            oracle_latencies = await self._get_real_latency_snapshot(probe_if_empty=False)
             snapshot = {}
             if isinstance(self.selector_instance, PPOHybridSelector):
-                snapshot["ppo_snapshot"] = self.selector_instance.policy_snapshot(
-                    explore=False
-                )
+                snapshot["ppo_snapshot"] = self.selector_instance.policy_snapshot(explore=False)
             return JSONResponse(
                 {
                     "latencies": oracle_latencies,
@@ -363,9 +351,7 @@ class SteeringServer:
                 ):
                     async with self._steering_lock:
                         node_names = [
-                            info[0]
-                            for info in self.monitor.get_nodes()
-                            if info and info[0]
+                            info[0] for info in self.monitor.get_nodes() if info and info[0]
                         ]
                         contexts_for_decision, latencies_for_decision = {}, {}
                         for node_name in node_names:
@@ -395,9 +381,7 @@ class SteeringServer:
                         self.last_decision_contexts[decision_id] = contexts_for_decision
                 else:
                     decision_id = str(uuid.uuid4())
-                    ordered_nodes = self.selector_instance.select_arm(
-                        decision_id=decision_id
-                    )
+                    ordered_nodes = self.selector_instance.select_arm(decision_id=decision_id)
 
             self.last_steering_main_server_decision = (
                 ordered_nodes[0] if ordered_nodes else "N/A_NO_NODES_FROM_SELECTION"
@@ -410,12 +394,7 @@ class SteeringServer:
             if forwarded_prefix and not forwarded_prefix.startswith("/"):
                 forwarded_prefix = f"/{forwarded_prefix}"
             uri = f"{uri_scheme}://{service_host}{forwarded_prefix}"
-            target = (
-                request.query_params.get("_DASH_pathway", "")
-                .strip()
-                .strip('"')
-                .strip("'")
-            )
+            target = request.query_params.get("_DASH_pathway", "").strip().strip('"').strip("'")
 
             resp = self.dash_parser.build(
                 target=target,
@@ -429,13 +408,10 @@ class SteeringServer:
             resp["MEASURED-LATENCIES-MS"] = await self._get_real_latency_snapshot()
             resp["DECISION-ID"] = decision_id
             last_act = getattr(self.selector_instance, "last_action", None)
-            if last_act is not None and isinstance(last_act, dict):
-                if "quality_level" in last_act:
-                    resp["RL-QUALITY-LEVEL"] = last_act["quality_level"]
+            if last_act is not None and isinstance(last_act, dict) and "quality_level" in last_act:
+                resp["RL-QUALITY-LEVEL"] = last_act["quality_level"]
             response = JSONResponse(resp)
-            response.headers["Cache-Control"] = (
-                "no-store, no-cache, must-revalidate, max-age=0"
-            )
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             return response
 
     def run(self):
@@ -498,10 +474,7 @@ class SteeringServer:
             return
 
         prev_latency = self.last_real_latencies.get(normalized_name)
-        if prev_latency is not None:
-            smoothed = 0.3 * latency + 0.7 * prev_latency
-        else:
-            smoothed = latency
+        smoothed = 0.3 * latency + 0.7 * prev_latency if prev_latency is not None else latency
 
         self.last_real_latencies[normalized_name] = smoothed
         history = self.real_latency_history.setdefault(normalized_name, [])
@@ -522,9 +495,7 @@ class SteeringServer:
         node_names = [info[0] for info in self.monitor.get_nodes() if info and info[0]]
         if not node_names:
             node_names = None
-        probed = await asyncio.to_thread(
-            get_all_latencies, nodes=node_names, timeout_seconds=0.75
-        )
+        probed = await asyncio.to_thread(get_all_latencies, nodes=node_names, timeout_seconds=0.75)
         self.last_real_latency_probe_time = now
         for node_name, latency in probed.items():
             if latency != 9999.0:
@@ -604,42 +575,21 @@ class SteeringServer:
             return JSONResponse({"message": "Data logged"}, status_code=200)
 
         oracle_latencies = await self._probe_real_latencies()
-        oracle_val = oracle_latencies.get(
-            normalized_latency_name
-        ) or oracle_latencies.get(srv_name)
+        oracle_val = oracle_latencies.get(normalized_latency_name) or oracle_latencies.get(srv_name)
         if oracle_val and oracle_val < 9999.0:
             feedback_value = float(oracle_val)
         else:
             feedback_value = float(feedback_latency)
         effective_latency = feedback_value + float(stall_time) * _STALL_PENALTY_FACTOR
 
-        if isinstance(
-            self.selector_instance,
-            (
-                UCB1Selector,
-                LinUCBSelector,
-                EpsilonGreedy,
-                ThompsonSamplingSelector,
-            ),
-        ):
-            feedback_value = (
-                10000.0 / effective_latency if effective_latency > 0 else 0.0
-            )
-        elif isinstance(
-            self.selector_instance,
-            (PPOHybridSelector,),
-        ):
-            feedback_value = (
-                10000.0 / effective_latency if effective_latency > 0 else 0.0
-            )
+        if isinstance(self.selector_instance, (UCB1Selector, LinUCBSelector, EpsilonGreedy, ThompsonSamplingSelector, PPOHybridSelector)):
+            feedback_value = 10000.0 / effective_latency if effective_latency > 0 else 0.0
 
         async with self._steering_lock:
             update_kwargs = {}
             if decision_id:
                 update_kwargs["decision_id"] = decision_id
-            if isinstance(
-                self.selector_instance, (LinUCBSelector, ThompsonSamplingSelector)
-            ):
+            if isinstance(self.selector_instance, (LinUCBSelector, ThompsonSamplingSelector)):
                 ctx = None
                 if decision_id and decision_id in self.last_decision_contexts:
                     stored = self.last_decision_contexts.pop(decision_id, {})
@@ -672,9 +622,7 @@ class SteeringServer:
 
             if isinstance(self.selector_instance, (PPOHybridSelector,)):
                 update_kwargs["done"] = True
-            self.selector_instance.update(
-                selector_arm_name, feedback_value, **update_kwargs
-            )
+            self.selector_instance.update(selector_arm_name, feedback_value, **update_kwargs)
         return JSONResponse({"message": "RL updated and logged"}, status_code=200)
 
     async def _handle_location_only(self, srv_name, rt_c, log_base):
@@ -688,9 +636,7 @@ class SteeringServer:
             }
             oracle_latencies = await self._probe_real_latencies()
             if oracle_latencies:
-                log_entry["all_servers_oracle_latency_json"] = json.dumps(
-                    oracle_latencies
-                )
+                log_entry["all_servers_oracle_latency_json"] = json.dumps(oracle_latencies)
                 best_server = min(oracle_latencies, key=lambda k: oracle_latencies[k])
                 log_entry["experienced_latency_ms_ORACLE"] = oracle_latencies.get(
                     self._normalize_server_name(srv_name)
@@ -709,18 +655,14 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
-    _configure_all_loggers(
-        default_level=logging.DEBUG if args.verbose else logging.INFO
-    )
+    _configure_all_loggers(default_level=logging.DEBUG if args.verbose else logging.INFO)
     app_logger.info("Steering server starting. Strategy will be selected from the UI.")
 
     monitor_config = CONFIG.get("monitor", {})
     monitor = KubernetesMonitor(
         interval_seconds=monitor_config.get("interval_seconds", 2),
         namespace=monitor_config.get("namespace", "default"),
-        label_selector=monitor_config.get(
-            "kubernetes_label_selector", "app=delivery-node"
-        ),
+        label_selector=monitor_config.get("kubernetes_label_selector", "app=delivery-node"),
     )
     monitor.start_collecting()
 

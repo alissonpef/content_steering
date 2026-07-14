@@ -1,5 +1,7 @@
 import math
+
 import numpy as np
+
 from .base import Selector, selector_logger
 
 
@@ -79,9 +81,7 @@ class ThompsonSamplingSelector(Selector):
     def select_arm(self, **kwargs) -> list[str]:
         contexts = kwargs.get("contexts")
         if not contexts:
-            selector_logger.error(
-                "[ThompsonSampling] 'contexts' not provided for select_arm."
-            )
+            selector_logger.error("[ThompsonSampling] 'contexts' not provided for select_arm.")
             return []
         if set(contexts.keys()) != set(self.nodes):
             self.initialize(list(contexts.keys()))
@@ -101,15 +101,11 @@ class ThompsonSamplingSelector(Selector):
                 continue
             mean = self._means[arm]
             precision = np.maximum(self._precisions[arm], self.min_precision)
-            sampled_weights = self.rng.normal(
-                loc=mean, scale=np.sqrt(self.alpha / precision)
-            )
+            sampled_weights = self.rng.normal(loc=mean, scale=np.sqrt(self.alpha / precision))
             sampled_scores[arm] = self._sigmoid(float(sampled_weights @ context_vector))
         if not sampled_scores:
             return []
-        return sorted(
-            sampled_scores, key=lambda k: float(sampled_scores[k]), reverse=True
-        )
+        return sorted(sampled_scores, key=lambda k: float(sampled_scores[k]), reverse=True)
 
     def update(self, chosen_arm_name: str, feedback_value: float, **kwargs):
         context = kwargs.get("context")
@@ -150,10 +146,7 @@ class ThompsonSamplingSelector(Selector):
             )
             updated_mean = (
                 updated_mean
-                - self.learning_rate
-                * (prediction - target)
-                * context_vector
-                / updated_precision
+                - self.learning_rate * (prediction - target) * context_vector / updated_precision
             )
         self._means[chosen_arm_name] = updated_mean
         self._precisions[chosen_arm_name] = updated_precision
@@ -161,9 +154,7 @@ class ThompsonSamplingSelector(Selector):
         self.total_pulls += 1
         count = self.counts[chosen_arm_name]
         previous_value = self.values.get(chosen_arm_name, 0.0)
-        self.values[chosen_arm_name] = (
-            (count - 1) * previous_value + reward_value
-        ) / count
+        self.values[chosen_arm_name] = ((count - 1) * previous_value + reward_value) / count
 
     @property
     def real_counts(self):

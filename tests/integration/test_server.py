@@ -1,7 +1,9 @@
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from src.steering.server import fastapi_app, SteeringServer
-from unittest.mock import MagicMock
+
+from src.steering.server import SteeringServer, fastapi_app
 
 
 @pytest.fixture

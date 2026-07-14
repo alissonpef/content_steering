@@ -2,34 +2,33 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import json
 import argparse
+import json
 import logging
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from plot_utils import (
+    CB_BLACK,
+    CB_CYAN,
+    CB_RED,
+    KNOWN_SERVER_KEYS_UNDERSCORE,
+    KNOWN_STRATEGY_KEYS,
     apply_global_style,
     configure_logger,
-    save_figure,
+    extract_strategy_from_filename,
     format_axes,
     get_server_color,
     get_server_label,
     get_strategy_display_name,
-    extract_strategy_from_filename,
-    KNOWN_STRATEGY_KEYS,
-    CB_BLACK,
-    CB_RED,
-    CB_CYAN,
-    KNOWN_SERVER_KEYS_UNDERSCORE,
     parse_json_column,
+    save_figure,
 )
 
 logger = logging.getLogger("generate_graphs")
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 RAW_LOGS_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "raw")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "individual_runs")
 ACTUAL_CACHE_NAMES_HYPHEN = ["delivery-node-1", "delivery-node-2", "delivery-node-3"]
@@ -45,8 +44,7 @@ def find_dynamic_best(row):
         valid = {
             k.replace("_", "-"): v
             for k, v in lats.items()
-            if k.replace("_", "-") in ACTUAL_CACHE_NAMES_HYPHEN
-            and isinstance(v, (int, float))
+            if k.replace("_", "-") in ACTUAL_CACHE_NAMES_HYPHEN and isinstance(v, (int, float))
         }
         if not valid:
             return (None, np.nan)
@@ -148,13 +146,10 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     if "steering_decision_main_server" in df.columns:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
         h2, l2 = ([], [])
-        tmp = df.dropna(
-            subset=["steering_decision_main_server", "sim_time_client"]
-        ).copy()
+        tmp = df.dropna(subset=["steering_decision_main_server", "sim_time_client"]).copy()
         tmp = tmp.drop_duplicates(subset=["sim_time_client"], keep="first")
         all_entities = sorted(
-            set(ACTUAL_CACHE_NAMES_HYPHEN)
-            | set(tmp["steering_decision_main_server"].unique())
+            set(ACTUAL_CACHE_NAMES_HYPHEN) | set(tmp["steering_decision_main_server"].unique())
         )
         ent_map = {e: i for i, e in enumerate(all_entities)}
         tmp["decision_int"] = tmp["steering_decision_main_server"].replace(ent_map)
@@ -204,23 +199,19 @@ def generate_plots(csv_path: str, max_time: float | None = None):
         save_figure(fig, os.path.join(img_dir, "2_steering_decisions"))
     else:
         logger.info("Plot 2 skipped: no steering decision column.")
-    if "rl_values_json" in df.columns and (
-        not pd.Series(df["rl_values_json"]).dropna().empty
-    ):
+    if "rl_values_json" in df.columns and (not pd.Series(df["rl_values_json"]).dropna().empty):
         parsed = parse_json_column(df["rl_values_json"], prefix="value_")
         if not parsed.empty:
-            merged = pd.concat(
-                [df.loc[parsed.index, "sim_time_client"], parsed], axis=1
-            )
+            merged = pd.concat([df.loc[parsed.index, "sim_time_client"], parsed], axis=1)
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             value_cols = sorted(
-                (
+                
                     c
                     for c in merged.columns
                     if c.startswith("value_")
                     and c.replace("value_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
-                )
+                
             )
             for col in value_cols:
                 sk = col.replace("value_", "").replace("_", "-")
@@ -234,9 +225,7 @@ def generate_plots(csv_path: str, max_time: float | None = None):
                         alpha=0.8,
                         label=get_server_label(sk),
                     )
-            ylabel = (
-                "Estimated Reward" if "ucb" in strat_key.lower() else "Estimated Value"
-            )
+            ylabel = "Estimated Reward" if "ucb" in strat_key.lower() else "Estimated Value"
             if strat_key == "epsilon_greedy":
                 ylabel = "Estimated Reward"
             format_axes(
@@ -258,18 +247,16 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     if counts_col and (not pd.Series(df[counts_col]).dropna().empty):
         parsed = parse_json_column(df[counts_col], prefix="data_")
         if not parsed.empty:
-            merged = pd.concat(
-                [df.loc[parsed.index, "sim_time_client"], parsed], axis=1
-            )
+            merged = pd.concat([df.loc[parsed.index, "sim_time_client"], parsed], axis=1)
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
             cnt_cols = sorted(
-                (
+                
                     c
                     for c in merged.columns
                     if c.startswith("data_")
                     and c.replace("data_", "") in KNOWN_SERVER_KEYS_UNDERSCORE
-                )
+                
             )
             for col in cnt_cols:
                 sk = col.replace("data_", "").replace("_", "-")
@@ -298,14 +285,10 @@ def generate_plots(csv_path: str, max_time: float | None = None):
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
-            merged = pd.concat(
-                [df.loc[parsed.index, "sim_time_client"], parsed], axis=1
-            )
+            merged = pd.concat([df.loc[parsed.index, "sim_time_client"], parsed], axis=1)
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
-            lat_cols = sorted(
-                (c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
-            )
+            lat_cols = sorted(c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
             for col in lat_cols:
                 sk = col.replace("_", "-")
                 sub = merged.dropna(subset=["sim_time_client", col])
@@ -345,9 +328,7 @@ def _resolve_csv(name: str):
 
 def main():
     global OUTPUT_DIR
-    parser = argparse.ArgumentParser(
-        description="Generate per-run publication-ready graphs."
-    )
+    parser = argparse.ArgumentParser(description="Generate per-run publication-ready graphs.")
     parser.add_argument(
         "csv_argument",
         nargs="?",
@@ -380,14 +361,8 @@ def main():
         logger.info("No CSV specified — processing all raw logs.")
         if os.path.isdir(RAW_LOGS_DIR):
             for fn in sorted(os.listdir(RAW_LOGS_DIR)):
-                if (
-                    fn.startswith("log_")
-                    and fn.endswith(".csv")
-                    and ("_average" not in fn)
-                ):
-                    generate_plots(
-                        os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time
-                    )
+                if fn.startswith("log_") and fn.endswith(".csv") and ("_average" not in fn):
+                    generate_plots(os.path.join(RAW_LOGS_DIR, fn), max_time=args.max_time)
 
 
 if __name__ == "__main__":

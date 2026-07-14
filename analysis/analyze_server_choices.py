@@ -1,20 +1,21 @@
+import argparse
+import json
+import logging
 import os
 import re
-import json
-import argparse
-import logging
-import pandas as pd
-import matplotlib.pyplot as plt
 import sys
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "plotting"))
 from plot_utils import (
+    STRATEGY_LEGEND_ORDER,
     apply_global_style,
     configure_logger,
-    save_figure,
-    get_strategy_display_name,
     extract_strategy_from_filename,
-    STRATEGY_LEGEND_ORDER,
+    get_strategy_display_name,
+    save_figure,
 )
 
 logger = logging.getLogger("analyze_server_choices")
@@ -119,9 +120,7 @@ def analyze_server_choices(
 
                 scenario_key = _extract_scenario(fn)
                 scenario_results.setdefault(scenario_key, {})
-                scenario_results[scenario_key].setdefault(
-                    sk, {"total": 0, "correct": 0}
-                )
+                scenario_results[scenario_key].setdefault(sk, {"total": 0, "correct": 0})
                 scenario_results[scenario_key][sk]["total"] += total
                 scenario_results[scenario_key][sk]["correct"] += correct
         except Exception as exc:
@@ -136,9 +135,7 @@ def analyze_server_choices(
         df_res.to_csv(output_csv, index=False)
         logger.info(f"CSV saved: {output_csv}")
     if output_img:
-        _save_table_image(
-            df_res, output_img, title="Dynamic Best Server Choice Accuracy"
-        )
+        _save_table_image(df_res, output_img, title="Dynamic Best Server Choice Accuracy")
 
     if output_csv:
         by_scenario_dir = os.path.join(os.path.dirname(output_csv), "by_scenario")
@@ -152,9 +149,7 @@ def analyze_server_choices(
             sdf.to_csv(s_csv, index=False)
             logger.info(f"Scenario CSV saved: {s_csv}")
             if output_img:
-                by_scenario_img_dir = os.path.join(
-                    os.path.dirname(output_img), "by_scenario"
-                )
+                by_scenario_img_dir = os.path.join(os.path.dirname(output_img), "by_scenario")
                 os.makedirs(by_scenario_img_dir, exist_ok=True)
                 s_img = os.path.join(
                     by_scenario_img_dir,
@@ -204,7 +199,7 @@ def _save_table_image(df, path_without_ext, title):
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(10)
     tbl.scale(1, 1.5)
-    for (r, c), cell in tbl.get_celld().items():
+    for (r, _c), cell in tbl.get_celld().items():
         cell.set_edgecolor(CELL_EDGE)
         cell.set_linewidth(0.6)
         if r == 0:
@@ -219,9 +214,7 @@ def _save_table_image(df, path_without_ext, title):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Analyse dynamic-best-server choice accuracy."
-    )
+    parser = argparse.ArgumentParser(description="Analyse dynamic-best-server choice accuracy.")
     parser.add_argument(
         "--logs_dir",
         default=PROCESSED_DIR,

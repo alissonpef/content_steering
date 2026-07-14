@@ -1,6 +1,8 @@
-import pytest
-import numpy as np
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+
 from src.steering.strategies.lin_ucb import LinUCBSelector
 from src.steering.strategies.thompson import ThompsonSamplingSelector
 

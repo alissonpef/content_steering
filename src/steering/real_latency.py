@@ -1,6 +1,7 @@
-import socket
 import os
+import socket
 import time
+
 import requests
 
 DEFAULT_NODE_NAMES = ("delivery-node-1", "delivery-node-2", "delivery-node-3")
@@ -29,9 +30,7 @@ _session = requests.Session()
 
 def _service_url_and_headers(node_name: str, probe_path: str) -> tuple[str, dict]:
     namespace = os.environ.get("K8S_NAMESPACE", "default")
-    host_suffix = os.environ.get(
-        "K8S_SERVICE_HOST_SUFFIX", f".{namespace}.svc.cluster.local"
-    )
+    host_suffix = os.environ.get("K8S_SERVICE_HOST_SUFFIX", f".{namespace}.svc.cluster.local")
     hostname = f"{node_name}{host_suffix}"
     ip = _resolve_host(hostname)
     path = probe_path if probe_path.startswith("/") else f"/{probe_path}"
@@ -61,9 +60,7 @@ def measure_latency_ms(
     samples: list[float] = []
     for i in range(n_samples):
         t0 = time.perf_counter()
-        response = _session.get(
-            url, headers=headers, timeout=timeout_seconds, stream=True
-        )
+        response = _session.get(url, headers=headers, timeout=timeout_seconds, stream=True)
         response.raise_for_status()
         response.close()
         elapsed = (time.perf_counter() - t0) * 1000.0
@@ -79,11 +76,11 @@ def get_all_latencies(
     timeout_seconds: float = 1.0,
 ) -> dict[str, float]:
     node_names = nodes or tuple(
-        (
+        
             name.strip()
             for name in os.environ.get("DELIVERY_NODE_NAMES", "").split(",")
             if name.strip()
-        )
+        
     )
     if not node_names:
         node_names = DEFAULT_NODE_NAMES

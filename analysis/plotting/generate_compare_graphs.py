@@ -5,25 +5,24 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import argparse
 import logging
 import re
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from plot_utils import (
+    KNOWN_STRATEGY_KEYS,
+    STRATEGY_LEGEND_ORDER,
     apply_global_style,
     configure_logger,
-    save_figure,
-    format_axes,
-    sort_legend_by_strategy,
-    get_strategy_style,
     extract_strategy_from_filename,
-    STRATEGY_LEGEND_ORDER,
-    KNOWN_STRATEGY_KEYS,
+    format_axes,
+    get_strategy_style,
+    save_figure,
+    sort_legend_by_strategy,
 )
 
 logger = logging.getLogger("compare_strategies")
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results")
 WINDOW_SIZE = 25
@@ -60,10 +59,7 @@ def plot_average_latency_comparison(
                 continue
             fname = os.path.splitext(fn)[0]
             strat = extract_strategy_from_filename(fname)
-            if (
-                "rl_strategy" in df.columns
-                and len(pd.Series(df["rl_strategy"]).dropna()) > 0
-            ):
+            if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
                 strat = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
             if strat not in KNOWN_STRATEGY_KEYS:
                 continue
@@ -86,7 +82,7 @@ def plot_average_latency_comparison(
         fig, ax = plt.subplots(figsize=(7.5, 4.0))
         plotted = set()
         scenario_xmax = 0.0
-        for strat_key, fn, df in sorted(entries, key=_order, reverse=True):
+        for strat_key, _, df in sorted(entries, key=_order, reverse=True):
             if strat_key in plotted:
                 continue
             subdf = df.sort_values("sim_time_client").copy()
@@ -112,9 +108,7 @@ def plot_average_latency_comparison(
             )
             plotted.add(strat_key)
         if not plotted:
-            logger.warning(
-                f"No data plotted for comparison in scenario: {scenario_key}"
-            )
+            logger.warning(f"No data plotted for comparison in scenario: {scenario_key}")
             plt.close(fig)
             continue
         nice_metric = metric.replace("_", " ").replace("ms", "").strip().title()
@@ -136,13 +130,9 @@ def plot_average_latency_comparison(
             ncol=4,
         )
         fig.tight_layout()
-        scenario_output_dir = os.path.join(
-            output_dir, "comparative_analysis", scenario_key
-        )
+        scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
         base = metric.replace("experienced_latency_ms", "latency")
-        save_figure(
-            fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_comparison")
-        )
+        save_figure(fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_comparison"))
         logger.info(f"Comparison plot saved to {scenario_output_dir}")
 
 
@@ -180,9 +170,7 @@ def main():
     plot_selection_distribution(args.agg_dir, args.output_dir)
 
 
-def plot_cumulative_regret(
-    agg_dir: str, output_dir: str, max_time: float | None = None
-):
+def plot_cumulative_regret(agg_dir: str, output_dir: str, max_time: float | None = None):
     entries_by_scenario: dict[str, list[tuple[str, str, pd.DataFrame]]] = {}
     for fn in sorted(os.listdir(agg_dir)):
         if not (fn.startswith("log_") and "_average" in fn and fn.endswith(".csv")):
@@ -197,10 +185,7 @@ def plot_cumulative_regret(
             ):
                 continue
             strat = extract_strategy_from_filename(os.path.splitext(fn)[0])
-            if (
-                "rl_strategy" in df.columns
-                and len(pd.Series(df["rl_strategy"]).dropna()) > 0
-            ):
+            if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
                 strat = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
             if strat not in KNOWN_STRATEGY_KEYS or strat == "best":
                 continue
@@ -220,7 +205,7 @@ def plot_cumulative_regret(
         fig, ax = plt.subplots(figsize=(7.5, 4.0))
         plotted = set()
         scenario_xmax = 0.0
-        for strat_key, fn, df in sorted(entries, key=_order, reverse=True):
+        for strat_key, _, df in sorted(entries, key=_order, reverse=True):
             if strat_key in plotted:
                 continue
             subdf = df.sort_values("sim_time_client").copy()
@@ -235,9 +220,7 @@ def plot_cumulative_regret(
             )
             if sub.empty:
                 continue
-            sub["regret"] = (
-                sub["experienced_latency_ms"] - sub["dynamic_best_server_latency"]
-            )
+            sub["regret"] = sub["experienced_latency_ms"] - sub["dynamic_best_server_latency"]
             sub["regret"] = sub["regret"].clip(lower=0)
             sub["cumulative_regret"] = sub["regret"].cumsum()
             max_val_reg = sub["sim_time_client"].max()
@@ -273,12 +256,8 @@ def plot_cumulative_regret(
             ncol=3,
         )
         fig.tight_layout()
-        scenario_output_dir = os.path.join(
-            output_dir, "comparative_analysis", scenario_key
-        )
-        save_figure(
-            fig, os.path.join(scenario_output_dir, "cumulative_regret_comparison")
-        )
+        scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
+        save_figure(fig, os.path.join(scenario_output_dir, "cumulative_regret_comparison"))
 
 
 def plot_selection_distribution(agg_dir: str, output_dir: str):
@@ -293,26 +272,17 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
         try:
             df = pd.read_csv(path)
             cnt_cols = sorted(
-                (
-                    c
-                    for c in df.columns
-                    if c.startswith("count_") and (not c.endswith("_std_agg"))
-                )
+                c for c in df.columns if c.startswith("count_") and (not c.endswith("_std_agg"))
             )
             if not cnt_cols:
                 continue
             strat = extract_strategy_from_filename(os.path.splitext(fn)[0])
-            if (
-                "rl_strategy" in df.columns
-                and len(pd.Series(df["rl_strategy"]).dropna()) > 0
-            ):
+            if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
                 strat = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
             if strat not in KNOWN_STRATEGY_KEYS or strat == "best":
                 continue
             scenario_key = _extract_scenario_from_filename(fn)
-            entries_by_scenario.setdefault(scenario_key, []).append(
-                (strat, fn, df, cnt_cols)
-            )
+            entries_by_scenario.setdefault(scenario_key, []).append((strat, fn, df, cnt_cols))
         except Exception:
             continue
 
@@ -325,13 +295,13 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
 
     for scenario_key, entries in sorted(entries_by_scenario.items()):
         server_keys = set()
-        for strat, fn, df, cnt_cols in entries:
+        for _, _, _, cnt_cols in entries:
             for c in cnt_cols:
                 server_keys.add(c.replace("count_", "").replace("_", "-"))
         server_keys = sorted(list(server_keys))
         matrix = []
         labels = []
-        for strat_key, fn, df, cnt_cols in sorted(entries, key=_order):
+        for strat_key, _, df, cnt_cols in sorted(entries, key=_order):
             if strat_key in labels:
                 continue
             row_data = []
@@ -342,7 +312,7 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
             )
             if last_row is None:
                 continue
-            total_pulls = sum((last_row[c] for c in cnt_cols))
+            total_pulls = sum(last_row[c] for c in cnt_cols)
             if total_pulls <= 0:
                 continue
             for sk in server_keys:
@@ -367,9 +337,7 @@ def plot_selection_distribution(agg_dir: str, output_dir: str):
         ax.set_xlabel("Servers")
         ax.set_ylabel("Strategies")
         fig.tight_layout()
-        scenario_output_dir = os.path.join(
-            output_dir, "comparative_analysis", scenario_key
-        )
+        scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
         save_figure(fig, os.path.join(scenario_output_dir, "selection_heatmap"))
 
 

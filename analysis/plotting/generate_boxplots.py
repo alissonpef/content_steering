@@ -2,27 +2,26 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import re
 import argparse
 import logging
-import pandas as pd
+import re
+
 import matplotlib.pyplot as plt
+import pandas as pd
 from plot_utils import (
+    CB_BLACK,
+    CB_RED,
+    KNOWN_STRATEGY_KEYS,
+    STRATEGY_LEGEND_ORDER,
     apply_global_style,
     configure_logger,
-    save_figure,
-    get_strategy_style,
     extract_strategy_from_filename,
-    STRATEGY_LEGEND_ORDER,
-    KNOWN_STRATEGY_KEYS,
-    CB_RED,
-    CB_BLACK,
+    get_strategy_style,
+    save_figure,
 )
 
 logger = logging.getLogger("generate_boxplots")
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results")
 
@@ -68,11 +67,9 @@ def _apply_box_style(bp, color: str, is_hero: bool = False):
         )
 
 
-def generate_comparison_boxplot(
-    all_data: dict, metric: str, output_dir: str, scenario_key: str
-):
+def generate_comparison_boxplot(all_data: dict, metric: str, output_dir: str, scenario_key: str):
     ordered_keys = [k for k in STRATEGY_LEGEND_ORDER if k in all_data]
-    ordered_keys += sorted((k for k in all_data if k not in ordered_keys))
+    ordered_keys += sorted(k for k in all_data if k not in ordered_keys)
     plot_data, labels, colors, heroes = ([], [], [], [])
     for sk in ordered_keys:
         df = all_data[sk]
@@ -87,10 +84,8 @@ def generate_comparison_boxplot(
         logger.warning("No data for comparison boxplot.")
         return
     fig, ax = plt.subplots(figsize=(max(7.0, len(labels) * 1.4), 4.5))
-    bp = ax.boxplot(
-        plot_data, vert=True, patch_artist=True, tick_labels=labels, widths=0.5
-    )
-    for i, (box, color, hero) in enumerate(zip(bp["boxes"], colors, heroes)):
+    bp = ax.boxplot(plot_data, vert=True, patch_artist=True, tick_labels=labels, widths=0.5)
+    for _i, (box, color, hero) in enumerate(zip(bp["boxes"], colors, heroes, strict=False)):
         box.set_facecolor(color)
         box.set_alpha(0.55 if not hero else 0.7)
         box.set_edgecolor(color)
@@ -118,15 +113,11 @@ def generate_comparison_boxplot(
     fig.tight_layout()
     base = metric.replace("experienced_latency_ms", "latency")
     scenario_output_dir = os.path.join(output_dir, "comparative_analysis", scenario_key)
-    save_figure(
-        fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_boxplot")
-    )
+    save_figure(fig, os.path.join(scenario_output_dir, f"all_strategies_{base}_boxplot"))
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Publication-ready boxplots from aggregated logs."
-    )
+    parser = argparse.ArgumentParser(description="Publication-ready boxplots from aggregated logs.")
     parser.add_argument("--agg_dir", default=PROCESSED_DIR)
     parser.add_argument("--output_dir", default=OUTPUT_DIR)
     parser.add_argument(
@@ -168,9 +159,7 @@ def main():
         logger.warning("No scenario data available for comparison boxplots.")
         return
     for scenario_key, all_data in sorted(entries_by_scenario.items()):
-        generate_comparison_boxplot(
-            all_data, args.metric, args.output_dir, scenario_key
-        )
+        generate_comparison_boxplot(all_data, args.metric, args.output_dir, scenario_key)
         logger.info(
             f"Scenario boxplot saved to {os.path.join(args.output_dir, 'comparative_analysis', scenario_key)}"
         )

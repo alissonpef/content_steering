@@ -1,4 +1,5 @@
 import random
+
 from .base import Selector, selector_logger
 
 
@@ -28,9 +29,7 @@ class EpsilonGreedy(Selector):
 
     def select_arm(self, **kwargs) -> list[str]:
         if self.monitor:
-            current_monitor_node_names = [
-                name for name, _ in self.monitor.get_nodes() if name
-            ]
+            current_monitor_node_names = [name for name, _ in self.monitor.get_nodes() if name]
             if not current_monitor_node_names and (not self.nodes):
                 return []
             if set(current_monitor_node_names) != set(self.nodes):
@@ -89,7 +88,5 @@ class EpsilonGreedy(Selector):
             alpha = 1.0 - self.gamma
             current_avg_reward = self.values[str_arm]
             normalized = feedback_value / self.reward_scale
-            self.values[str_arm] = (
-                1.0 - alpha
-            ) * current_avg_reward + alpha * normalized
+            self.values[str_arm] = (1.0 - alpha) * current_avg_reward + alpha * normalized
         self.counts[str_arm] += 1

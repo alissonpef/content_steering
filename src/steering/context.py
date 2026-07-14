@@ -1,7 +1,9 @@
-import time
 import math
+import time
+
 import numpy as np
-from .config import MOVEMENT_THRESHOLD_KM, CLIENT_COORDS_UPDATE_INTERVAL_SEC, app_logger
+
+from .config import CLIENT_COORDS_UPDATE_INTERVAL_SEC, MOVEMENT_THRESHOLD_KM, app_logger
 
 last_client_coords = {"lat": None, "lon": None, "time": 0.0}
 active_spam_targets: list[str] = []
@@ -15,9 +17,7 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
     dlon = math.radians(lon2 - lon1)
     a = (
         math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
     )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
@@ -148,9 +148,7 @@ def get_simple_context(
         all_lat_values = list(all_latencies.values())
         min_latency = min(all_lat_values)
         max_latency = max(all_lat_values)
-        latency_spread_ratio = (
-            min(1.0, min_latency / max_latency) if max_latency > 0 else 0.0
-        )
+        latency_spread_ratio = min(1.0, min_latency / max_latency) if max_latency > 0 else 0.0
         relative_performance = min(1.0, min_latency / max(latency, 1.0))
     else:
         latency_spread_ratio = 0.0

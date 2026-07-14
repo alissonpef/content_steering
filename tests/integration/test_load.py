@@ -1,10 +1,12 @@
-import pytest
 import asyncio
-import httpx
-from src.steering.server import fastapi_app, SteeringServer
-from unittest.mock import MagicMock
-import uuid
 import os
+import uuid
+from unittest.mock import MagicMock
+
+import httpx
+import pytest
+
+from src.steering.server import SteeringServer, fastapi_app
 
 
 @pytest.fixture
@@ -36,8 +38,8 @@ async def test_concurrent_steering_requests():
         for i in range(100):
             tasks.append(ac.get(f"/node1/manifest.mpd?_DASH_pathway=true&req_id={i}"))
         responses = await asyncio.gather(*tasks)
-        assert all((r.status_code == 200 for r in responses))
-        assert all(("DECISION-ID" in r.json() for r in responses))
+        assert all(r.status_code == 200 for r in responses)
+        assert all("DECISION-ID" in r.json() for r in responses)
 
 
 @pytest.mark.asyncio
@@ -60,4 +62,4 @@ async def test_concurrent_coords_updates():
         for _ in range(50):
             tasks.append(ac.post("/coords", json=payload))
         responses = await asyncio.gather(*tasks)
-        assert all((r.status_code == 200 for r in responses))
+        assert all(r.status_code == 200 for r in responses)

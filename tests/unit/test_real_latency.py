@@ -1,8 +1,9 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from src.steering.real_latency import (
-    measure_latency_ms,
-    get_all_latencies,
     _resolve_host,
+    get_all_latencies,
+    measure_latency_ms,
     warmup_nodes,
 )
 

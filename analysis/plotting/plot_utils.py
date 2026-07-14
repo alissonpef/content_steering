@@ -1,11 +1,12 @@
-import os
 import logging
-import re
 import math
-import numpy as np
+import os
+import re
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 
 logger = logging.getLogger("plot_utils")
 CB_BLUE = "#0072B2"
@@ -203,9 +204,7 @@ def get_server_color(server_name_hyphen: str) -> str:
 
 
 def get_server_label(server_name_hyphen: str) -> str:
-    return SERVER_LABELS.get(
-        server_name_hyphen, server_name_hyphen.replace("-", " ").title()
-    )
+    return SERVER_LABELS.get(server_name_hyphen, server_name_hyphen.replace("-", " ").title())
 
 
 def extract_strategy_from_filename(filename_no_ext: str) -> str:
@@ -276,9 +275,9 @@ def sort_legend_by_strategy(ax, **kwargs):
             return STRATEGY_LEGEND_ORDER.index(k)
         return len(STRATEGY_LEGEND_ORDER)
 
-    paired = sorted(zip(labels, handles), key=lambda t: _sort_key(t[0]))
+    paired = sorted(zip(labels, handles, strict=False), key=lambda t: _sort_key(t[0]))
     if paired:
-        labels_s, handles_s = zip(*paired)
+        labels_s, handles_s = zip(*paired, strict=False)
         legend = ax.get_legend()
         if not kwargs:
             legend_loc = getattr(legend, "_loc", "best") if legend else "best"
@@ -314,6 +313,7 @@ def configure_logger(logger_instance, verbose: bool = False):
 
 def parse_json_column(series, prefix: str = ""):
     import json
+
     import pandas as pd
 
     rows, indices = [], []

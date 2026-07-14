@@ -1,6 +1,7 @@
+import contextlib
+import logging
 import threading
 import time
-import logging
 
 try:
     from kubernetes import client as k8s_client
@@ -63,9 +64,7 @@ class KubernetesMonitor:
         if not self.running:
             self.running = True
             self.collect_stats()
-            self._timer_thread = threading.Thread(
-                target=self._collection_loop, daemon=True
-            )
+            self._timer_thread = threading.Thread(target=self._collection_loop, daemon=True)
             self._timer_thread.start()
             monitor_logger.info(
                 f"Kubernetes pod discovery started (interval: {self.interval}s, selector: {self.label_selector})."
@@ -100,15 +99,11 @@ class KubernetesMonitor:
         lat, lon = None, None
         for env_var in container.env or []:
             if env_var.name == "LATITUDE":
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     lat = float(env_var.value)
-                except TypeError, ValueError:
-                    pass
             elif env_var.name == "LONGITUDE":
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     lon = float(env_var.value)
-                except TypeError, ValueError:
-                    pass
         return lat, lon
 
     def collect_stats(self):
@@ -180,7 +175,7 @@ if __name__ == "__main__":
     monitor = KubernetesMonitor(interval_seconds=5)
     monitor.start_collecting()
     try:
-        for i in range(2):
+        for _i in range(2):
             time.sleep(5)
             monitor_logger.info(f"Active nodes detected: {monitor.get_nodes()}")
             monitor_logger.info(f"Node coordinates: {monitor.get_node_coordinates()}")

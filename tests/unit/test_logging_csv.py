@@ -1,11 +1,12 @@
-import os
 import csv
+import os
 import tempfile
+
 from src.steering.logging_csv import (
-    setup_csv_logging,
-    log_data_to_csv,
-    get_unique_log_filename,
     CSV_HEADERS,
+    get_unique_log_filename,
+    log_data_to_csv,
+    setup_csv_logging,
 )
 
 
@@ -14,7 +15,7 @@ def test_csv_logging_flow():
         filename = os.path.join(tempdir, "test_log.csv")
         setup_csv_logging(filename)
         assert os.path.exists(filename)
-        with open(filename, "r") as f:
+        with open(filename) as f:
             reader = csv.reader(f)
             headers = next(reader)
             assert headers == CSV_HEADERS
@@ -25,7 +26,7 @@ def test_csv_logging_flow():
             "client_lon": -47.0,
         }
         log_data_to_csv(test_data, filename)
-        with open(filename, "r") as f:
+        with open(filename) as f:
             reader = csv.reader(f)
             next(reader)
             row = next(reader)

@@ -1,6 +1,7 @@
-import os
 import csv
+import os
 import threading
+
 from .config import LOG_DIR, app_logger
 
 _csv_write_lock = threading.Lock()
@@ -33,25 +34,20 @@ def setup_csv_logging(filename: str):
             file.flush()
         app_logger.info(f"CSV log configured: {filename}")
     except Exception as e:
-        app_logger.critical(
-            f"Error setting up CSV log for {filename}: {e}", exc_info=True
-        )
+        app_logger.critical(f"Error setting up CSV log for {filename}: {e}", exc_info=True)
 
 
 def log_data_to_csv(data_dict: dict, filename: str):
     row = [data_dict.get(h) for h in CSV_HEADERS]
     try:
-        with _csv_write_lock:
-            with open(filename, mode="a", newline="", buffering=1) as file:
-                csv.writer(file).writerow(row)
-                file.flush()
+        with _csv_write_lock, open(filename, mode="a", newline="", buffering=1) as file:
+            csv.writer(file).writerow(row)
+            file.flush()
     except Exception as e:
         app_logger.error(f"Error writing to CSV {filename}: {e}", exc_info=True)
 
 
-def get_unique_log_filename(
-    base_name: str, user_suffix: str, directory: str = LOG_DIR
-) -> str:
+def get_unique_log_filename(base_name: str, user_suffix: str, directory: str = LOG_DIR) -> str:
     full_base_with_suffix = f"{base_name}{user_suffix}"
     cnt = 1
     while True:

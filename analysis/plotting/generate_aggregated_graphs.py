@@ -3,29 +3,28 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import argparse
-import pandas as pd
+import logging
+
 import matplotlib.pyplot as plt
+import pandas as pd
 from plot_utils import (
+    CB_BLACK,
+    CB_ORANGE,
+    KNOWN_SERVER_KEYS_UNDERSCORE,
+    KNOWN_STRATEGY_KEYS,
     apply_global_style,
     configure_logger,
-    save_figure,
+    extract_strategy_from_filename,
     format_axes,
     get_server_color,
     get_server_label,
     get_strategy_display_name,
-    extract_strategy_from_filename,
-    KNOWN_STRATEGY_KEYS,
-    CB_ORANGE,
-    CB_BLACK,
-    KNOWN_SERVER_KEYS_UNDERSCORE,
     parse_json_column,
+    save_figure,
 )
-import logging
 
 logger = logging.getLogger("plot_aggregated_logs")
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "logs", "aggregated")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "results", "consolidated_charts")
 FILL_ALPHA = 0.18
@@ -65,9 +64,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     if df.empty:
         logger.warning(f"Empty CSV: {csv_path}")
         return
-    df.columns = [
-        c.strip() if isinstance(c, str) else str(c).strip() for c in df.columns
-    ]
+    df.columns = [c.strip() if isinstance(c, str) else str(c).strip() for c in df.columns]
     strat_key = "N/A"
     if "rl_strategy" in df.columns and len(pd.Series(df["rl_strategy"]).dropna()) > 0:
         strat_key = str(pd.Series(df["rl_strategy"]).dropna().iloc[0])
@@ -149,19 +146,11 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     else:
         plt.close(fig)
     value_cols = sorted(
-        (
-            c
-            for c in df.columns
-            if c.startswith("value_") and (not c.endswith("_std_agg"))
-        )
+        c for c in df.columns if c.startswith("value_") and (not c.endswith("_std_agg"))
     )
     if value_cols:
         fig, ax = plt.subplots(figsize=(7.0, 3.5))
-        ylabel = (
-            "Avg. Estimated Reward"
-            if "ucb" in strat_key.lower()
-            else "Avg. Estimated Value"
-        )
+        ylabel = "Avg. Estimated Reward" if "ucb" in strat_key.lower() else "Avg. Estimated Value"
         if strat_key == "epsilon_greedy":
             ylabel = "Avg. Estimated Reward"
         for col in value_cols:
@@ -197,11 +186,7 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
         fig.tight_layout()
         save_figure(fig, os.path.join(img_dir, "2_avg_rl_estimated_values"))
     cnt_cols = sorted(
-        (
-            c
-            for c in df.columns
-            if c.startswith("count_") and (not c.endswith("_std_agg"))
-        )
+        c for c in df.columns if c.startswith("count_") and (not c.endswith("_std_agg"))
     )
     cols3, prefix3, ylabel3 = ([], "", "Avg. Selections (Pulls)")
     if cnt_cols:
@@ -244,14 +229,10 @@ def generate_plots_for_aggregated(csv_path: str, max_time: float | None = None):
     ):
         parsed = parse_json_column(df["all_servers_oracle_latency_json"])
         if not parsed.empty:
-            merged = pd.concat(
-                [df.loc[parsed.index, "sim_time_client"], parsed], axis=1
-            )
+            merged = pd.concat([df.loc[parsed.index, "sim_time_client"], parsed], axis=1)
             merged = merged.drop_duplicates("sim_time_client", keep="last")
             fig, ax = plt.subplots(figsize=(7.0, 3.5))
-            lat_cols = sorted(
-                (c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
-            )
+            lat_cols = sorted(c for c in merged.columns if c in KNOWN_SERVER_KEYS_UNDERSCORE)
             for col in lat_cols:
                 sk = col.replace("_", "-")
                 sub = merged.dropna(subset=["sim_time_client", col])
