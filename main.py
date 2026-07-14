@@ -1,5 +1,5 @@
 def main():
-    print("Hello from content-steering!")
+    print("Hello from content_steering!")
 
 
 if __name__ == "__main__":

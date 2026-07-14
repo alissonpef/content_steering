@@ -11,7 +11,7 @@
 <!-- LOGOTIPO DO PROJETO -->
 <br />
 <div align="center">
-  <a href="https://github.com/alissonpef/Content-Steering">
+  <a href="https://github.com/alissonpef/content_steering">
     <img src="assets/logo.png" alt="Logo" width="120" height="120">
   </a>
 
@@ -20,14 +20,14 @@
   <p align="center">
     Ambiente de simulação nativo em Kubernetes para avaliação de estratégias de Content Steering em streaming de vídeo DASH utilizando algoritmos de Aprendizado por Reforço sob latências de rede reais.
     <br />
-    <a href="https://github.com/alissonpef/Content-Steering"><strong>Explore a documentação »</strong></a>
+    <a href="https://github.com/alissonpef/content_steering"><strong>Explore a documentação »</strong></a>
     <br />
     <br />
     <a href="https://www.youtube.com/watch?v=HVMiex63daY">Ver Demonstração</a>
     &middot;
-    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=bug&template=bug-report---.md">Reportar Bug</a>
+    <a href="https://github.com/alissonpef/content_steering/issues/new?labels=bug&template=bug-report---.md">Reportar Bug</a>
     &middot;
-    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=enhancement&template=feature-request---.md">Solicitar Recurso</a>
+    <a href="https://github.com/alissonpef/content_steering/issues/new?labels=enhancement&template=feature-request---.md">Solicitar Recurso</a>
   </p>
 </div>
 
@@ -61,7 +61,7 @@
 <!-- SOBRE O PROJETO -->
 ## Sobre O Projeto
 
-[![Captura de Tela do Produto][product-screenshot]](https://github.com/alissonpef/Content-Steering)
+[![Captura de Tela do Produto][product-screenshot]](https://github.com/alissonpef/content_steering)
 
 Este projeto simula o mecanismo de **Content Steering** em streaming adaptativo DASH usando múltiplas estratégias de decisão inteligente. O objetivo principal é treinar e avaliar algoritmos de Aprendizado por Reforço (como Multi-Armed Bandits e PPO) para selecionar dinamicamente a melhor fonte de entrega (CDN) com base nas flutuações de latência, jitter e bufferbloat em tempo real.
 
@@ -119,7 +119,7 @@ Para rodar este simulador, você precisará de:
 
 1. Clone o repositório do projeto:
    ```sh
-   git clone https://github.com/alissonpef/Content-Steering.git
+   git clone https://github.com/alissonpef/content_steering.git
    ```
 2. Instale as dependências de Python do projeto de forma isolada com o `uv`:
    ```sh
@@ -272,8 +272,8 @@ Não se esqueça de dar uma estrela ao projeto! Obrigado novamente!
 
 ### Principais contribuidores:
 
-<a href="https://github.com/alissonpef/Content-Steering/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=alissonpef/Content-Steering" alt="imagem de contribuidores" />
+<a href="https://github.com/alissonpef/content_steering/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=alissonpef/content_steering" alt="imagem de contribuidores" />
 </a>
 
 <p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
@@ -290,7 +290,7 @@ Distribuído sob a Licença MIT. Veja `LICENSE.txt` para mais informações.
 
 Álisson Pereira Ferreira - alissonpef@gmail.com
 
-Link do Projeto: [https://github.com/alissonpef/Content-Steering](https://github.com/alissonpef/Content-Steering)
+Link do Projeto: [https://github.com/alissonpef/content_steering](https://github.com/alissonpef/content_steering)
 
 <p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
@@ -304,16 +304,16 @@ Este projeto baseia-se e expande os trabalhos dos seguintes repositórios:
 <p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
-[contributors-shield]: https://img.shields.io/github/contributors/alissonpef/Content-Steering.svg?style=for-the-badge
-[contributors-url]: https://github.com/alissonpef/Content-Steering/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/alissonpef/Content-Steering.svg?style=for-the-badge
-[forks-url]: https://github.com/alissonpef/Content-Steering/network/members
-[stars-shield]: https://img.shields.io/github/stars/alissonpef/Content-Steering.svg?style=for-the-badge
-[stars-url]: https://github.com/alissonpef/Content-Steering/stargazers
-[issues-shield]: https://img.shields.io/github/issues/alissonpef/Content-Steering.svg?style=for-the-badge
-[issues-url]: https://github.com/alissonpef/Content-Steering/issues
-[license-shield]: https://img.shields.io/github/license/alissonpef/Content-Steering.svg?style=for-the-badge
-[license-url]: https://github.com/alissonpef/Content-Steering/blob/main/LICENSE.txt
+[contributors-shield]: https://img.shields.io/github/contributors/alissonpef/content_steering.svg?style=for-the-badge
+[contributors-url]: https://github.com/alissonpef/content_steering/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/alissonpef/content_steering.svg?style=for-the-badge
+[forks-url]: https://github.com/alissonpef/content_steering/network/members
+[stars-shield]: https://img.shields.io/github/stars/alissonpef/content_steering.svg?style=for-the-badge
+[stars-url]: https://github.com/alissonpef/content_steering/stargazers
+[issues-shield]: https://img.shields.io/github/issues/alissonpef/content_steering.svg?style=for-the-badge
+[issues-url]: https://github.com/alissonpef/content_steering/issues
+[license-shield]: https://img.shields.io/github/license/alissonpef/content_steering.svg?style=for-the-badge
+[license-url]: https://github.com/alissonpef/content_steering/blob/main/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/alisson-pereira-ferreira/
 [product-screenshot]: assets/content_steering.png
