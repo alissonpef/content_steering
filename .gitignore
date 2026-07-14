@@ -6,3 +6,5 @@ certs/
 data/
 dataset/
 .vscode/
+.ruff_cache/
+*.pyc

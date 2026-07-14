@@ -69,5 +69,18 @@ dependencies = [
 [tool.pyright]
 extraPaths = ["analysis", "analysis/plotting", "src"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
 [dependency-groups]
-dev = []
+dev = [
+    "ruff>=0.15.15",
+]
