@@ -1,6 +1,6 @@
 FROM nginx:alpine
 
-COPY infra/k8s/client-nginx.conf /etc/nginx/nginx.conf
+COPY infra/k8s/client_nginx.conf /etc/nginx/nginx.conf
 
 COPY client/assets /usr/share/nginx/html/assets
 COPY client/index.html /usr/share/nginx/html/

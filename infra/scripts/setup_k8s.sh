@@ -3,10 +3,10 @@
 set -e
 
 DATASET_DIR="./dataset"
-KIND_CONFIG="./infra/k8s/manifests/kind-config.yaml"
+KIND_CONFIG="./infra/k8s/manifests/kind_config.yaml"
 CERTS_SCRIPT="./infra/scripts/create_k8s_certs.sh"
-CERTS_MANIFEST="./infra/k8s/manifests/k8s-certs.yaml"
-K8S_DEPLOY="./infra/k8s/manifests/k8s-deploy.yaml"
+CERTS_MANIFEST="./infra/k8s/manifests/k8s_certs.yaml"
+K8S_DEPLOY="./infra/k8s/manifests/k8s_deploy.yaml"
 KIND_CLUSTER_NAME="kind"
 
 log() {

@@ -49,7 +49,7 @@ echo "=================================================="
 echo "   ALL CERTIFICATES WERE CREATED SUCCESSFULLY!   "
 echo "=================================================="
 
-K8S_CERTS_DIR="./infra/k8s/manifests/k8s-certs.yaml"
+K8S_CERTS_DIR="./infra/k8s/manifests/k8s_certs.yaml"
 
 echo ""
 echo "--> Creating Kubernetes Secrets..."

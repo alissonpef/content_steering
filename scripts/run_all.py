@@ -5,6 +5,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
 import pandas as pd
 import yaml
 from playwright.sync_api import sync_playwright
@@ -13,7 +14,7 @@ CONFIG_PATH = Path(__file__).parent / "experiment_config.yaml"
 
 
 def load_config() -> dict:
-    with open(CONFIG_PATH, "r") as fh:
+    with open(CONFIG_PATH) as fh:
         return yaml.safe_load(fh)
 
 
@@ -188,18 +189,14 @@ def run_all_experiments(cfg: dict, logger: logging.Logger) -> None:
                             poll_ms=poll_ms,
                         )
                         if ended_cleanly:
-                            logger.info(
-                                "%s Simulation ended via completion signal.", label
-                            )
+                            logger.info("%s Simulation ended via completion signal.", label)
                         else:
                             suspect_runs.append(log_filename)
                         page.wait_for_timeout(2000)
                         expected_log = raw_log_dir / log_filename
                         _validate_log(expected_log, logger)
                     except Exception as exc:
-                        logger.error(
-                            "%s Unexpected error: %s", label, exc, exc_info=True
-                        )
+                        logger.error("%s Unexpected error: %s", label, exc, exc_info=True)
                         suspect_runs.append(log_filename)
                     finally:
                         context.close()
@@ -247,9 +244,7 @@ def extract_logs(cfg: dict, logger: logging.Logger) -> None:
         )
         logger.info("Logs copied successfully.")
     except subprocess.CalledProcessError as exc:
-        logger.warning(
-            "kubectl cp failed (code %d). Logs may already be local.", exc.returncode
-        )
+        logger.warning("kubectl cp failed (code %d). Logs may already be local.", exc.returncode)
     except Exception as exc:
         logger.warning("Could not copy logs from pod: %s", exc)
 
@@ -263,12 +258,12 @@ def run_analysis_scripts(cfg: dict, logger: logging.Logger) -> None:
     logger.info("3.1 Aggregating logs per (strategy, scenario)...")
     for strategy in strategies:
         for scenario in scenarios:
-            cmd = f"uv run python analysis/aggregate_logs.py {strategy} --suffix_pattern _{scenario}"
+            cmd = (
+                f"uv run python analysis/aggregate_logs.py {strategy} --suffix_pattern _{scenario}"
+            )
             logger.debug("CMD: %s", cmd)
             try:
-                subprocess.run(
-                    cmd, shell=True, check=True, capture_output=True, text=True
-                )
+                subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
                 logger.info("  OK  aggregate %s / %s", strategy, scenario)
             except subprocess.CalledProcessError as exc:
                 logger.warning(
@@ -307,9 +302,7 @@ def run_analysis_scripts(cfg: dict, logger: logging.Logger) -> None:
             subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
             logger.info("  OK  %s", description)
         except subprocess.CalledProcessError as exc:
-            logger.error(
-                "  FAIL %s (code %d)\n%s", description, exc.returncode, exc.stderr
-            )
+            logger.error("  FAIL %s (code %d)\n%s", description, exc.returncode, exc.stderr)
     logger.info("Phase 3 complete.")
 
 
@@ -345,11 +338,7 @@ def reorganize_results(cfg: dict, logger: logging.Logger) -> None:
                     strategy = "_".join(parts[1:-2])
                     if scenario in scenarios and run_dir.is_dir():
                         dest = (
-                            target_dir
-                            / scenario
-                            / "modelos_individuais"
-                            / strategy
-                            / "consolidado"
+                            target_dir / scenario / "modelos_individuais" / strategy / "consolidado"
                         )
                         dest.mkdir(parents=True, exist_ok=True)
                         for file in run_dir.iterdir():
@@ -376,9 +365,7 @@ def reorganize_results(cfg: dict, logger: logging.Logger) -> None:
                     dest = target_dir / scenario / "estatisticas"
                     dest.mkdir(parents=True, exist_ok=True)
                     shutil.copy(file, dest / file.name)
-    global_stat = (
-        Path(out_cfg["logs_aggregated_dir"]) / "dynamic_best_choice_accuracy.csv"
-    )
+    global_stat = Path(out_cfg["logs_aggregated_dir"]) / "dynamic_best_choice_accuracy.csv"
     if global_stat.exists():
         for scenario in scenarios:
             dest = target_dir / scenario / "estatisticas"
