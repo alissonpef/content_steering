@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-<!-- PROJECT SHIELDS -->
+<!-- ESCUDOS DO PROJETO -->
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
@@ -8,136 +8,133 @@
 [![MIT License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
-<!-- PROJECT LOGO -->
+<!-- LOGOTIPO DO PROJETO -->
 <br />
 <div align="center">
-  <h3 align="center">Content Steering with Reinforcement Learning (DASH)</h3>
+  <a href="https://github.com/alissonpef/Content-Steering">
+    <img src="assets/logo.png" alt="Logo" width="120" height="120">
+  </a>
+
+  <h3 align="center">Content Steering com Aprendizado por Reforço (DASH)</h3>
 
   <p align="center">
-    Research project for simulating Content Steering in DASH streaming with multiple decision strategies, using a Kubernetes-native environment to evaluate performance against real-world network latency.
+    Ambiente de simulação nativo em Kubernetes para avaliação de estratégias de Content Steering em streaming de vídeo DASH utilizando algoritmos de Aprendizado por Reforço sob latências de rede reais.
     <br />
-    <a href="https://github.com/alissonpef/Content-Steering"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/alissonpef/Content-Steering"><strong>Explore a documentação »</strong></a>
     <br />
     <br />
-    <a href="https://www.youtube.com/watch?v=HVMiex63daY">View Demo</a>
+    <a href="https://www.youtube.com/watch?v=HVMiex63daY">Ver Demonstração</a>
     &middot;
-    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=bug&template=bug-report---.md">Reportar Bug</a>
     &middot;
-    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/alissonpef/Content-Steering/issues/new?labels=enhancement&template=feature-request---.md">Solicitar Recurso</a>
   </p>
 </div>
 
-<!-- TABLE OF CONTENTS -->
+<!-- ÍNDICE -->
 <details>
-  <summary>Table of Contents</summary>
+  <summary>Índice</summary>
   <ol>
     <li>
-      <a href="#about-the-project">About The Project</a>
+      <a href="#sobre-o-projeto">Sobre O Projeto</a>
       <ul>
-        <li><a href="#built-with">Built With</a></li>
+        <li><a href="#construído-com">Construído Com</a></li>
       </ul>
     </li>
     <li>
-      <a href="#getting-started">Getting Started</a>
+      <a href="#começando">Começando</a>
       <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#dataset">Dataset</a></li>
-        <li><a href="#installation--quick-start">Installation & Quick Start</a></li>
+        <li><a href="#pré-requisitos">Pré-requisitos</a></li>
+        <li><a href="#instalação">Instalação</a></li>
       </ul>
     </li>
-    <li><a href="#architecture">Architecture</a></li>
-    <li><a href="#analysis-pipeline">Analysis Pipeline</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
+    <li><a href="#arquitetura">Arquitetura</a></li>
+    <li><a href="#uso">Uso</a></li>
+    <li><a href="#pipeline-de-análise">Pipeline de Análise</a></li>
+    <li><a href="#contribuindo">Contribuindo</a></li>
+    <li><a href="#licença">Licença</a></li>
+    <li><a href="#contato">Contato</a></li>
+    <li><a href="#agradecimentos">Agradecimentos</a></li>
   </ol>
 </details>
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+<!-- SOBRE O PROJETO -->
+## Sobre O Projeto
 
-[![Content Steering Screenshot][product-screenshot]](https://github.com/alissonpef/Content-Steering)
+[![Captura de Tela do Produto][product-screenshot]](https://github.com/alissonpef/Content-Steering)
 
-This project aims to simulate Content Steering in DASH streaming using multiple decision strategies. It utilizes a Kubernetes-native environment to train and evaluate Reinforcement Learning algorithms against real-world network latency, jitter, and bufferbloat.
+Este projeto simula o mecanismo de **Content Steering** em streaming adaptativo DASH usando múltiplas estratégias de decisão inteligente. O objetivo principal é treinar e avaliar algoritmos de Aprendizado por Reforço (como Multi-Armed Bandits e PPO) para selecionar dinamicamente a melhor fonte de entrega (CDN) com base nas flutuações de latência, jitter e bufferbloat em tempo real.
 
-Features:
-- A FastAPI-based steering service with strategies:
-  - `epsilon_greedy`
-  - `ucb1`
-  - `linucb` (contextual bandit)
-  - `thompson_sampling` (contextual Thompson Sampling)
-  - `ppo_hybrid` (hybrid PPO policy for bitrate + steering)
-  - `round_robin` (round robin baseline)
-  - `oracle_best_choice`, `random`, `no_steering`
-- Kubernetes-native architecture (using Kind) utilizing real cluster latencies.
-- 3 simulated cache servers (Delivery Nodes) using Caddy for local HTTPS.
-- Full analysis pipeline for log aggregation and graph generation.
+Principais recursos:
+* **Servidor de Steering em FastAPI** contendo as estratégias:
+  * `epsilon_greedy` (MAB clássico)
+  * `ucb1` (Upper Confidence Bound)
+  * `linucb` (Contextual Bandit)
+  * `thompson_sampling` (Contextual Thompson Sampling)
+  * `ppo_hybrid` (Algoritmo de política híbrida para bitrate + steering)
+  * `round_robin`, `random`, `no_steering` e `oracle_best_choice` (baselines)
+* **Ambiente Kubernetes nativo (Kind)** para emulação e isolamento de rede real entre os pods.
+* **3 servidores de cache simulados (Delivery Nodes)** usando Caddy para entrega local via HTTPS.
+* **Pipeline automatizado de testes** com orquestração via Playwright em navegadores Headless.
+* **Módulo completo de análise** para agregação de logs e geração de gráficos estatísticos com qualidade de publicação.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-### Built With
+### Construído Com
 
-* [![Python][Python]][Python-url]
-* [![FastAPI][FastAPI]][FastAPI-url]
-* [![Kubernetes][Kubernetes]][Kubernetes-url]
-* [![Docker][Docker]][Docker-url]
-* [![JavaScript][JavaScript]][JavaScript-url]
-* [![Nginx][Nginx]][Nginx-url]
-* [![Caddy][Caddy]][Caddy-url]
+Abaixo estão listadas as tecnologias e ferramentas utilizadas para construir este ecossistema:
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+* [![Python][Python-shield]][Python-url]
+* [![FastAPI][FastAPI-shield]][FastAPI-url]
+* [![Kubernetes][Kubernetes-shield]][Kubernetes-url]
+* [![Docker][Docker-shield]][Docker-url]
+* [![Playwright][Playwright-shield]][Playwright-url]
+* [![Nginx][Nginx-shield]][Nginx-url]
+* [![Caddy][Caddy-shield]][Caddy-url]
 
-<!-- GETTING STARTED -->
-## Getting Started
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-To get a local copy up and running follow these simple example steps.
+<!-- COMEÇANDO -->
+## Começando
 
-### Prerequisites
+Siga as instruções a seguir para configurar e executar a simulação localmente no seu ambiente de desenvolvimento.
 
-* Linux / WSL2
-* Python 3.12+
-* Docker
-* Kind (Kubernetes IN Docker)
-* kubectl
-* mkcert (For local HTTPS generation)
+### Pré-requisitos
 
-### Dataset
+Para rodar este simulador, você precisará de:
+* **Sistema Operacional**: Linux (recomendado Ubuntu/Debian) ou WSL2 no Windows.
+* **Gerenciador de Dependências Python**: `uv` instalado localmente.
+  ```sh
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+* **Docker** e **Kind** instalados e em execução.
+* **kubectl** para gerenciamento de recursos do Kubernetes.
+* **mkcert** para geração de certificados SSL locais confiáveis:
+  ```sh
+  sudo apt install mkcert
+  mkcert -install
+  ```
 
-Download the dataset from:
-- [Google Drive Link](https://drive.google.com/drive/folders/1_Mh1JDoRroikzJnjCsZ-Qgqdbx-XP78N?usp=sharing)
+### Instalação
 
-Place the `dataset` folder at the project root, like this:
-```
-./dataset/Eldorado/4sec/avc/manifest.mpd
-```
-
-### Installation & Quick Start
-
-1. Clone the repo
+1. Clone o repositório do projeto:
    ```sh
    git clone https://github.com/alissonpef/Content-Steering.git
    ```
-2. Start the environment (specify your desired strategy: `linucb`, `ucb1`, `epsilon_greedy`, `ppo_hybrid`, `thompson_sampling`, `round_robin`)
+2. Instale as dependências de Python do projeto de forma isolada com o `uv`:
    ```sh
-   ./infra/scripts/setup_k8s.sh linucb
+   uv sync
    ```
-3. Access the Interface from your browser:
-   [http://localhost:5000](http://localhost:5000)
+3. Obtenha a pasta de dataset necessária:
+   * Baixe os arquivos do dataset do [Google Drive Link](https://drive.google.com/drive/folders/1_Mh1JDoRroikzJnjCsZ-Qgqdbx-XP78N?usp=sharing).
+   * Coloque a pasta baixada como `./dataset` no diretório raiz do projeto (de forma que o caminho para o manifesto do vídeo seja `./dataset/Eldorado/4sec/avc/manifest.mpd`).
 
-   If needed, forward the port manually:
-   ```sh
-   kubectl port-forward deployment/gateway 5000:80
-   ```
-4. Stop the Environment
-   ```sh
-   ./infra/scripts/stop_k8s.sh
-   ```
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+<!-- ARQUITETURA -->
+## Arquitetura
 
-
-<!-- ARCHITECTURE -->
-## Architecture
+O sistema é implantado de forma totalmente emulada e nativa dentro de um cluster Kubernetes rodando via Kind:
 
 ```mermaid
 flowchart TD
@@ -147,114 +144,166 @@ flowchart TD
     classDef backend fill:#00bcd4,stroke:#fff,stroke-width:2px,color:#fff;
     classDef storage fill:#607d8b,stroke:#fff,stroke-width:2px,color:#fff;
 
-    Browser("🌐 Client Browser (Dash.js)"):::browser
+    Browser("🌐 Navegador Cliente (Dash.js)"):::browser
 
-    subgraph Cluster ["☸️ Kubernetes Cluster (Kind)"]
+    subgraph Cluster ["☸️ Cluster Kubernetes (Kind)"]
         Gateway{"🛡️ Nginx Gateway"}:::proxy
 
-        UI["💻 dash-client (Nginx UI)"]:::frontend
+        UI["💻 dash-client (UI Nginx)"]:::frontend
         RL["🧠 steering-server (FastAPI)"]:::backend
         
-        subgraph CDNNodes ["📦 CDN Delivery Nodes (Caddy)"]
+        subgraph CDNNodes ["📦 Nós de Entrega CDN (Caddy)"]
             direction LR
-            Node1[("Node 1")]:::storage
-            Node2[("Node 2")]:::storage
-            Node3[("Node 3")]:::storage
+            Node1[("Delivery Node 1")]:::storage
+            Node2[("Delivery Node 2")]:::storage
+            Node3[("Delivery Node 3")]:::storage
         end
     end
 
-    Browser -- "1. Load UI (localhost:5000/)" --> Gateway
-    Gateway -- "Route: /" --> UI
+    Browser -- "1. Carrega UI (localhost:5000/)" --> Gateway
+    Gateway -- "Rota: /" --> UI
 
-    Browser -- "2. Get Decision (/steering/coords)" --> Gateway
-    Gateway -- "Route: /steering" --> RL
+    Browser -- "2. Obtém Decisão (/steering/coords)" --> Gateway
+    Gateway -- "Rota: /steering" --> RL
 
-    Browser -- "3. Download Chunk (/nodeX/...)" --> Gateway
-    Gateway -- "Route: /node[1-3]" --> CDNNodes
+    Browser -- "3. Baixa Chunks (/nodeX/...)" --> Gateway
+    Gateway -- "Rota: /node[1-3]" --> CDNNodes
     
-    RL -. "Background Latency Probes" .-> CDNNodes
+    RL -. "Sondas de Latência em Backgound" .-> CDNNodes
 ```
 
-### Component Breakdown
-- **Gateway**: Acts as the single entry point (reverse proxy), securely routing traffic to internal services to avoid CORS issues.
-- **dash-client**: Serves the static HTML/JS dashboard and the customized `dash.js` player.
-- **steering-server**: The brain of the project. A Python FastAPI service that hosts the Reinforcement Learning agents and measures network topology conditions dynamically.
-- **delivery-nodes**: Caddy servers representing edge CDNs, hosting the segmented DASH video chunks and utilizing Linux `tc` (Traffic Control) to emulate variable network jitter and delay.
+* **Nginx Gateway**: Atua como o ponto único de entrada do cluster (proxy reverso), roteando o tráfego e lidando com políticas de CORS.
+* **dash-client**: Servidor web que serve os arquivos estáticos da interface web e do player customizado do `dash.js`.
+* **steering-server**: O backend inteligente contendo os algoritmos de Aprendizado por Reforço e monitoramento de latência ativa e passiva.
+* **CDNNodes**: Nós de entrega (servidores Caddy) que armazenam os blocos do vídeo de simulação. Eles utilizam a ferramenta `tc` (Traffic Control) do kernel Linux para injetar latência, jitter e perturbações configuradas nos cenários de teste.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-<!-- ANALYSIS PIPELINE -->
-## Analysis Pipeline
+<!-- USO -->
+## Uso
 
-1. **Aggregate logs by strategy**
+Para interagir com o ambiente e executar as simulações, utilize os utilitários de infraestrutura e execução disponibilizados no repositório.
+
+### Inicializando o Ambiente Kubernetes
+
+1. Primeiro, gere os certificados HTTPS necessários localmente:
    ```sh
-   python3 analysis/aggregate_logs.py linucb --input_dir data/logs/raw/baseline --output_dir data/logs/aggregated
+   uv run python tasks.py generate_certificates
+   ```
+2. Inicialize o cluster local do Kubernetes (Kind) e implante todos os manifestos de simulação:
+   ```sh
+   uv run python tasks.py setup_k8s
+   ```
+3. Acesse o painel de visualização no seu navegador local em:
+   * [http://localhost:5000](http://localhost:5000)
+
+   *Caso a porta não esteja respondendo automaticamente, faça o redirecionamento manual da porta com o comando:*
+   ```sh
+   kubectl port-forward deployment/gateway 5000:80
    ```
 
-2. **Individual-run graphs**
+4. Para destruir o cluster e interromper o ambiente de simulação:
    ```sh
-   python3 analysis/plotting/generate_graphs.py data/logs/raw/baseline/log_linucb_1.csv
+   uv run python tasks.py stop_k8s
    ```
 
-3. **Comparative boxplots**
-   ```sh
-   python3 analysis/plotting/generate_boxplots.py
-   ```
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-4. **Server-choice accuracy analysis**
-   ```sh
-   python3 analysis/analyze_server_choices.py
-   ```
+<!-- PIPELINE DE ANÁLISE -->
+## Pipeline de Análise
 
-Results are saved in `data/results/` and aggregated logs in `data/logs/aggregated/`.
+O projeto conta com um script automatizado que executa toda a bateria de testes e compila os resultados para os diferentes modelos e cenários.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+### Orquestração Automatizada com Playwright
 
-<!-- CONTRIBUTING -->
-## Contributing
+Você pode orquestrar uma execução de simulação em lote completa executando o seguinte script:
+```sh
+uv run python scripts/run_all.py
+```
+Esse pipeline realiza as seguintes ações de forma automatizada:
+1. Roda as simulações do navegador cliente de forma *headless* via Playwright para cada algoritmo e cenário configurados.
+2. Copia os arquivos de log gerados internamente de dentro dos pods no Kubernetes para o host local.
+3. Agrega todos os arquivos de log brutos.
+4. Processa estatísticas de desempenho e gera gráficos comparativos de latência média, arrependimento acumulado (*cumulative regret*), acurácia de escolha ótima e gráficos de séries temporais das simulações.
+5. Gera um relatório em markdown consolidado chamado `analise_cenarios.md`.
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+### Executando Módulos de Análise Manualmente
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+Caso prefira processar dados brutos que já estejam salvos no diretório local, você pode acionar os scripts de análise de forma independente:
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+* **Agregação de logs por estratégia e cenário:**
+  ```sh
+  uv run python analysis/aggregate_logs.py linucb --suffix_pattern _baseline
+  ```
+* **Geração de gráficos comparativos gerais (Latência e Regret):**
+  ```sh
+  uv run python analysis/plotting/generate_compare_graphs.py
+  ```
+* **Geração de gráficos de distribuição de escolha (Heatmaps):**
+  ```sh
+  uv run python analysis/plotting/generate_compare_graphs.py --metric dynamic_best_server_latency
+  ```
+* **Geração de gráficos de corridas de simulação individuais:**
+  ```sh
+  uv run python analysis/plotting/generate_graphs.py
+  ```
+* **Geração de boxplots estatísticos comparativos:**
+  ```sh
+  uv run python analysis/plotting/generate_boxplots.py
+  ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Todos os resultados estruturados e figuras finais em formato pronto para artigos acadêmicos serão armazenados na pasta `data/results/`.
 
-<!-- LICENSE -->
-## License
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
+<!-- CONTRIBUINDO -->
+## Contribuindo
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Contribuições são o que tornam a comunidade open source um lugar tão incrível para aprender, inspirar e criar. Qualquer contribuição que você fizer será **muito apreciada**.
 
-<!-- CONTACT -->
-## Contact
+Se você tiver alguma sugestão que tornaria isso melhor, por favor faça o fork do repositório e crie um pull request. Você também pode simplesmente abrir uma issue com a tag "enhancement".
+Não se esqueça de dar uma estrela ao projeto! Obrigado novamente!
+
+1. Faça o Fork do Projeto
+2. Crie a sua Branch de Funcionalidade (`git checkout -b feature/FuncionalidadeIncrivel`)
+3. Commit suas Mudanças (`git commit -m 'Adicione alguma FuncionalidadeIncrivel'`)
+4. Faça o Push para a Branch (`git push origin feature/FuncionalidadeIncrivel`)
+5. Abra um Pull Request
+
+### Principais contribuidores:
+
+<a href="https://github.com/alissonpef/Content-Steering/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=alissonpef/Content-Steering" alt="imagem de contribuidores" />
+</a>
+
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
+
+<!-- LICENÇA -->
+## Licença
+
+Distribuído sob a Licença MIT. Veja `LICENSE.txt` para mais informações.
+
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
+
+<!-- CONTATO -->
+## Contato
 
 Álisson Pereira Ferreira - alissonpef@gmail.com
 
-Project Link: [https://github.com/alissonpef/Content-Steering](https://github.com/alissonpef/Content-Steering)
+Link do Projeto: [https://github.com/alissonpef/Content-Steering](https://github.com/alissonpef/Content-Steering)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
+<!-- AGRADECIMENTOS -->
+## Agradecimentos
 
-This project builds upon the excellent work of the following repositories:
+Este projeto baseia-se e expande os trabalhos dos seguintes repositórios:
+* [Content Steering Tutorial](https://github.com/robertovrf/content-steering-tutorial) — repositório base para a lógica inicial de desvio de fluxo.
+* [Content Steering K8s Simulator](https://github.com/pafev/content-steering-k8s-simulator) — base para o ecossistema de simulação distribuída em cluster Kubernetes local.
 
-* [Content Steering Tutorial](https://github.com/robertovrf/content-steering-tutorial) – the foundational base of this project.
-* [Content Steering K8s Simulator](https://github.com/pafev/content-steering-k8s-simulator) – the base used for the real latency simulation environment in Kubernetes.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
+<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [contributors-shield]: https://img.shields.io/github/contributors/alissonpef/Content-Steering.svg?style=for-the-badge
 [contributors-url]: https://github.com/alissonpef/Content-Steering/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/alissonpef/Content-Steering.svg?style=for-the-badge
@@ -267,18 +316,19 @@ This project builds upon the excellent work of the following repositories:
 [license-url]: https://github.com/alissonpef/Content-Steering/blob/main/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/alisson-pereira-ferreira/
-[product-screenshot]: content-steering.png
-[Python]: https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white
+[product-screenshot]: assets/content_steering.png
+
+[Python-shield]: https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white
 [Python-url]: https://www.python.org/
-[FastAPI]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
+[FastAPI-shield]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
 [FastAPI-url]: https://fastapi.tiangolo.com/
-[Kubernetes]: https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white
+[Kubernetes-shield]: https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white
 [Kubernetes-url]: https://kubernetes.io/
-[Docker]: https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white
+[Docker-shield]: https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white
 [Docker-url]: https://www.docker.com/
-[JavaScript]: https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E
-[JavaScript-url]: https://developer.mozilla.org/en-US/docs/Web/JavaScript
-[Nginx]: https://img.shields.io/badge/nginx-%23009639.svg?style=for-the-badge&logo=nginx&logoColor=white
+[Playwright-shield]: https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white
+[Playwright-url]: https://playwright.dev/
+[Nginx-shield]: https://img.shields.io/badge/nginx-%23009639.svg?style=for-the-badge&logo=nginx&logoColor=white
 [Nginx-url]: https://nginx.org/
-[Caddy]: https://img.shields.io/badge/caddy-%230e1520.svg?style=for-the-badge&logo=caddy&logoColor=white
+[Caddy-shield]: https://img.shields.io/badge/caddy-%230e1520.svg?style=for-the-badge&logo=caddy&logoColor=white
 [Caddy-url]: https://caddyserver.com/
