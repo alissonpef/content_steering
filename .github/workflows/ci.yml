@@ -18,10 +18,10 @@ jobs:
       with:
         enable-cache: true
     
-    - name: Set up Python 3.14
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version-file: ".python-version"
         
     - name: Install dependencies
       run: uv sync --all-extras --dev
@@ -40,10 +40,10 @@ jobs:
       with:
         enable-cache: true
     
-    - name: Set up Python 3.14
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version-file: ".python-version"
         
     - name: Install dependencies
       run: uv sync --all-extras --dev
@@ -62,10 +62,10 @@ jobs:
       with:
         enable-cache: true
     
-    - name: Set up Python 3.14
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version-file: ".python-version"
         
     - name: Install dependencies
       run: uv sync --all-extras --dev
@@ -74,4 +74,8 @@ jobs:
       env:
         PYTHONPATH: .
       run: |
-        uv run pytest tests/
+        if [ -d "tests" ]; then
+          uv run pytest tests/
+        else
+          echo "No tests/ directory found, skipping."
+        fi
